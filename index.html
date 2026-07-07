@@ -410,10 +410,12 @@
           <div class="field"><input id="custPhone" placeholder="📱 Customer phone (type to auto-fill)" list="custPhoneList" inputmode="tel"><datalist id="custPhoneList"></datalist></div>
           <div class="field"><input id="custName" placeholder="Customer name (optional)"></div>
           <div class="field" id="addrField" style="display:none"><input id="custAddr" placeholder="Delivery address"></div>
-          <div class="disc-row">
+          <div class="disc-row" id="discRow">
             <button onclick="applyDisc('p',5)">5%</button><button onclick="applyDisc('p',10)">10%</button>
             <button onclick="applyDisc('p',15)">15%</button><button onclick="applyDisc('f',50)">₹50</button>
             <button onclick="applyDisc('f',100)">₹100</button><button onclick="applyDisc('p',0)">Clear</button>
+            <button id="devDiscBtnP" style="display:none;background:#fff5f5;border-color:#111;color:#111;font-weight:bold" onclick="devCustomDisc('p')">🛠️ Custom %</button>
+            <button id="devDiscBtnF" style="display:none;background:#fff5f5;border-color:#111;color:#111;font-weight:bold" onclick="devCustomDisc('f')">🛠️ Custom ₹</button>
           </div>
           <div class="totals" id="totals"></div>
           <div class="field" style="margin-top:8px">
@@ -747,6 +749,7 @@
                   <option value="accepted">Accepted</option>
                   <option value="preparing">Preparing</option>
                   <option value="ready">Ready</option>
+                  <option value="rejected">Rejected</option>
                 </select>
                 <button class="btn-ghost" onclick="renderQrInbox()">🔄</button>
               </div>
@@ -790,7 +793,7 @@
 
           <div class="card" style="margin-top:12px;background:#f6fff9;border-color:#bfe6cd">
             <h3>📲 Owner Alerts</h3>
-            <div class="field"><label>WhatsApp Owner Number</label><input id="qrOwnerWa" placeholder="+91 98765 43210"></div>
+            <div class="field"><label>WhatsApp Owner Number</label><input id="qrOwnerWa" placeholder="+91 8850231477"></div>
             <div class="field"><label>Restaurant Pickup Address (for delivery apps)</label><textarea id="qrPickupAddr" rows="2" placeholder="Indus Wok, 123 Andheri West, Mumbai"></textarea></div>
             <button class="btn-ok" style="width:100%" onclick="saveQrSettings()">💾 Save Alert Settings</button>
             <p class="muted" style="font-size:11px;margin-top:8px">✅ Browser push + sound + WhatsApp order share — all enabled</p>
@@ -1097,6 +1100,7 @@ function renderHeaderLic(){/* license banner removed */}
 
 /* ---------- DB ---------- */
 let DB=load();
+window.DB = DB;
 function ensurePartnerUser(d){
   if(!d.users)d.users=[];
   let p=d.users.find(u=>String(u.name||'').toLowerCase()==='partner');
@@ -1125,6 +1129,7 @@ function load(){
     if(!d.settings.firebaseProjectId)d.settings.firebaseProjectId='induswokpos';
     if(!d.settings.firebaseAppId)d.settings.firebaseAppId='1:761865480325:web:2ff33ec8a2e00dd057e1ec';
     if(!d.settings.firebaseDocPath)d.settings.firebaseDocPath='pos/induswok-default';
+    if(!d.settings.phone || d.settings.phone.includes('98765')) d.settings.phone='8850231477';
     ensurePrintSettings(d.settings);
     ensurePartnerUser(d);
     // One-time menu upgrade: replace the old demo menu with the full Indus Wok menu.
@@ -1142,7 +1147,7 @@ let _saveWarned=false;
 let _bc=null; try{_bc = new BroadcastChannel('iw_pos'); _bc.onmessage = (ev)=>{ if(ev.data && ev.data.t==='upd'){ try{DB=load(); liveRefreshAfterDataChange('bc');}catch(e){try{refreshActivePage();}catch(_){}} } };}catch(e){}
 try{ window.addEventListener('storage',e=>{ if(e.key===LS){ try{DB=load(); liveRefreshAfterDataChange('storage');}catch(_){} } }); }catch(e){}
 function bcNotify(){ try{ _bc && _bc.postMessage({t:'upd',ts:Date.now()}); }catch(e){} }
-function persist(){try{localStorage.setItem(LS,JSON.stringify(DB));bcNotify();}catch(e){if(!_saveWarned){_saveWarned=true;console.warn('Save failed (storage blocked):',e.message);toast('⚠️ Running in preview — data won\'t persist. Open the file in Chrome to save.');}}}
+function persist(){window.DB = DB;try{localStorage.setItem(LS,JSON.stringify(DB));bcNotify();}catch(e){if(!_saveWarned){_saveWarned=true;console.warn('Save failed (storage blocked):',e.message);toast('⚠️ Running in preview — data won\'t persist. Open the file in Chrome to save.');}}}
 let _liveRefreshTimer=null;
 function isPageActive(id){const p=document.getElementById('page-'+id);return !!(p&&p.classList.contains('active'));}
 function liveRefreshAfterDataChange(src){
@@ -1284,7 +1289,7 @@ a("Sizzlers","","Chinese Mixed Grill",450,0,"nonveg");
   const _recipesDummy=[
   ];
   return {
-    settings:{name:'Indus Wok',tagline:'Asian · Chinese · Pan-Asian Kitchen',phone:'',addr1:'',addr2:'',gst:'',upi:'',thanks:'Thank you! Visit again 🥢',gstEnabled:false,cgst:2.5,sgst:2.5,roll:72,font:12,autoPrint:true,billRoll:72,billFont:12,billAutoPrint:true,kotRoll:72,kotFont:13,kotAutoPrint:false,rawbtBill:true,rawbtKot:true,rawbtChars:32,rawbtQR:true,rawbtCut:true,syncUrl:'',licenseUrl:'',aiProv:'gemini',aiKey:'',firebaseApiKey:'AIzaSyBHYkp_aqgewS7MUy2cfk3r98aXEftlcsM',firebaseProjectId:'induswokpos',firebaseAppId:'1:761865480325:web:2ff33ec8a2e00dd057e1ec',firebaseDocPath:'pos/induswok-default'},
+    settings:{name:'Indus Wok',tagline:'Asian · Chinese · Pan-Asian Kitchen',phone:'8850231477',addr1:'',addr2:'',gst:'',upi:'',thanks:'Thank you! Visit again 🥢',gstEnabled:false,cgst:2.5,sgst:2.5,roll:72,font:12,autoPrint:true,billRoll:72,billFont:12,billAutoPrint:true,kotRoll:72,kotFont:13,kotAutoPrint:false,rawbtBill:true,rawbtKot:true,rawbtChars:32,rawbtQR:true,rawbtCut:true,syncUrl:'',licenseUrl:'',aiProv:'gemini',aiKey:'',firebaseApiKey:'AIzaSyBHYkp_aqgewS7MUy2cfk3r98aXEftlcsM',firebaseProjectId:'induswokpos',firebaseAppId:'1:761865480325:web:2ff33ec8a2e00dd057e1ec',firebaseDocPath:'pos/induswok-default'},
     users:[{name:'Owner',pin:'1111',role:'Owner'},{name:'Cashier',pin:'2222',role:'Cashier'},{name:'Waiter',pin:'3333',role:'Waiter'},{name:'Partner',pin:'4444',role:'Partner'},{name:'Developer',pin:DEV_SECRET_PIN,role:'Developer',hidden:true}],
     menuVersion:MENU_VERSION,
     menu,tables,bills:[],expenses:[],inventory,vendors,recipes,vendorTxns:[],deductions:[],staff:[],attendance:[],sessions:[],payments:[],customers:[],kots:[],archivedBills:[],
@@ -1294,6 +1299,7 @@ a("Sizzlers","","Chinese Mixed Grill",450,0,"nonveg");
 
 /* ---------- SESSION / LOGIN ---------- */
 let CUR=null, PIN='';
+window.setCUR = function(u){ CUR = u; }; window.getCUR = function(){ return CUR; };
 var _loginTries=0;
 function renderLogin(){
   _loginTries++;
@@ -1629,7 +1635,10 @@ function renderPrintStation(){
     activeCarts.sort((a,b) => (b.mtime || 0) - (a.mtime || 0));
     
     activeCarts.forEach(c => {
-      const label = (c.tableNo!=null ? ('Table ' + c.tableNo + (c.tableArea ? ' · ' + c.tableArea : '')) : tableNoFor(c.key));
+      const isTakeaway = /^TA_/.test(c.key);
+      const isDelivery = /^DL_/.test(c.key);
+      const isQR = /^QR_/.test(c.key);
+      const label = isQR ? ('QR #' + (c.cust||'Customer')) : (c.tableNo!=null && c.tableNo!=='QR' ? ('Table ' + c.tableNo + (c.tableArea ? ' · ' + c.tableArea : '')) : tableNoFor(c.key));
       const totals = cartTotal(c);
       const totalAmt = totals.total;
       const count = c.items.reduce((sum, i) => sum + i.qty, 0);
@@ -1639,9 +1648,7 @@ function renderPrintStation(){
       card.className = 'card';
       card.style.cssText = 'padding:12px; border:1px solid var(--line); border-radius:8px; display:flex; flex-direction:column; gap:8px; background:#fff; margin-bottom:10px;';
       
-      const isTakeaway = /^TA_/.test(c.key);
-      const isDelivery = /^DL_/.test(c.key);
-      const orderType = isDelivery ? '🚚 Delivery' : isTakeaway ? '🛍️ Takeaway' : '🪑 Dine-in';
+      const orderType = isQR ? ('📱 QR (' + (c.tableArea || 'Online') + ')') : (isDelivery ? '🚚 Delivery' : isTakeaway ? '🛍️ Takeaway' : '🪑 Dine-in');
       card.innerHTML = `
         <div class="row" style="align-items:center; justify-content:space-between; margin-bottom:4px;">
           <b style="font-size:15px; color:var(--red-d);">${label}</b>
@@ -1710,10 +1717,11 @@ function printStationKOT(key) {
   
   const isTakeaway = /^TA_/.test(key);
   const isDelivery = /^DL_/.test(key);
+  const isQR = /^QR_/.test(key);
   const t = DB.tables.find(x => x.id === key);
   
-  const label = t ? ('Table ' + t.no) : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : key));
-  const type = t ? 'Dine-in' : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : 'Dine-in'));
+  const label = t ? ('Table ' + t.no) : (isQR ? ('QR #' + (c.cust||'Customer')) : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : key)));
+  const type = t ? 'Dine-in' : (isQR ? 'QR Order' : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : 'Dine-in')));
   
   let b = {
     no: 'KOT',
@@ -1762,9 +1770,10 @@ function printStationBill(key) {
   
   const isTakeaway = /^TA_/.test(key);
   const isDelivery = /^DL_/.test(key);
+  const isQR = /^QR_/.test(key);
   const t = DB.tables.find(x => x.id === key);
   
-  const type = t ? 'Dine-in' : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : 'Dine-in'));
+  const type = t ? 'Dine-in' : (isQR ? 'QR Order' : (isTakeaway ? 'Takeaway' : (isDelivery ? 'Delivery' : 'Dine-in')));
   
   const b = {
     no: 'EST' + Date.now().toString().slice(-6),
@@ -1794,9 +1803,11 @@ function printStationSettle(key) {
   if (t) {
     openTable(t);
   } else {
-    curOrder = {type: /^TA_/.test(key) ? 'Takeaway' : 'Delivery', tableId: null, tableNo: null, area: null};
+    const isTakeaway = /^TA_/.test(key);
+    const isQR = /^QR_/.test(key);
+    curOrder = {type: isQR ? ('QR - '+(c.tableArea||'Online')) : (isTakeaway ? 'Takeaway' : 'Delivery'), tableId: null, tableNo: null, area: null};
     cart = c;
-    enterBilling(tableNoFor(key), /^TA_/.test(key) ? '🛍️ Takeaway' : '🚚 Delivery');
+    enterBilling(tableNoFor(key), isQR ? '📱 QR Order' : (isTakeaway ? '🛍️ Takeaway' : '🚚 Delivery'));
   }
 }
 
@@ -1856,6 +1867,7 @@ function addTables(){
 
 /* ---------- BILLING ---------- */
 let curOrder=null, cart=null;
+window.setCart = function(c){ cart = c; }; window.getCart = function(){ return cart; }; window.setCurOrder = function(o){ curOrder = o; }; window.getCurOrder = function(){ return curOrder; };
 const DISH_MOD_OPTIONS=['Less spicy','No spicy','Medium spicy','Extra spicy','Less oil','No oil','No onion','No garlic','No capsicum','Jain','Less salt','Extra sauce'];
 let pendingDishOption=null;
 function menuItemById(id){return DB.menu.find(x=>x.id===id)||null;}
@@ -2146,6 +2158,10 @@ function renderCart(){
     ${t.gstOn?`<div><span>CGST (${DB.settings.cgst}%)</span><span>${money(t.cgst)}</span></div>
     <div><span>SGST (${DB.settings.sgst}%)</span><span>${money(t.sgst)}</span></div>`:''}
     <div class="grand"><span>TOTAL</span><span>${money(t.total)}</span></div>`;
+  const devBtnP = document.getElementById('devDiscBtnP');
+  const devBtnF = document.getElementById('devDiscBtnF');
+  if(devBtnP) devBtnP.style.display = (typeof isDeveloper==='function' && isDeveloper()) ? 'inline-block' : 'none';
+  if(devBtnF) devBtnF.style.display = (typeof isDeveloper==='function' && isDeveloper()) ? 'inline-block' : 'none';
 }
 function toggleCart(open){
   const panel=document.getElementById('cartPanel');
@@ -2165,6 +2181,15 @@ function editPrice(idx){
   }, {numeric:true,type:'number'});
 }
 function applyDisc(type,val){cart.disc={type,val};$('#custName')&&(cart.cust=$('#custName').value);touchCart();save();renderCart();}
+function devCustomDisc(type){
+  if(!isDeveloper()){ toast('Developer only'); return; }
+  promptDlg(`Developer: Enter custom discount ${type==='p'?'percentage (%)':'amount (₹)'}:`, '', function(val){
+    const v = parseFloat(val);
+    if(isNaN(v) || v < 0){ toast('Enter a valid number'); return; }
+    applyDisc(type, v);
+    toast(`Custom discount ${type==='p'? v+'%' : '₹'+v} applied`);
+  }, {numeric:true, type:'number'});
+}
 function clearCart(){confirmDlg('Clear this cart?',function(){
   if(hasKotSent(cart)){
     cart.items=[];cart.disc={type:'p',val:0};touchCart();save();renderCart();renderTables();
@@ -2343,6 +2368,7 @@ function buildRawbtText(bill,isKOT){
 // Send raw ESC/POS text to the RawBT app via the intent: URL scheme.
 function sendToRawBT(text){
   try{
+    if(window._mockRawbt) return true;
     const S='#Intent;scheme=rawbt;';
     const P='package=ru.a402d.rawbtprinter;end;';
     const encoded=encodeURIComponent(text).replace(/'/g,'%27').replace(/\(/g,'%28').replace(/\)/g,'%29');
@@ -2476,6 +2502,11 @@ function settleBill(){
   } else {
     emptyCart(cart.key);
   }
+  if(String(cart.key).startsWith('QR_')){
+    const fid = String(cart.key).replace('QR_', '');
+    const q = qrOrders.find(x=>(x._fid||x.id)===fid);
+    if(q){ q.status = 'delivered'; if(typeof persistQr==='function') persistQr(); else if(window.persistQr) window.persistQr(); }
+  }
   save();
   syncBill(b);
   toggleCart(false);
@@ -2549,7 +2580,7 @@ function importCustomers(rows){
 }
 function downloadCustTemplate(){
   const rows=[['Name','Phone','Address'],
-    ['Rahul Sharma','9876543210','12 MG Road, Near Park'],
+    ['Rahul Sharma','8850231477','12 MG Road, Near Park'],
     ['Aisha Khan','9123456780','Flat 4B, Green Apartments']];
   dl('indus-wok-customers-template.csv',rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n'),'text/csv');
 }
@@ -4030,9 +4061,13 @@ function beep(){
 function tableNoFor(key){
   const t=DB.tables.find(x=>x.id===key);
   if(t)return 'Table '+t.no+(t.area?(' · '+t.area):'');
-  try{ const c = DB.carts && DB.carts[key]; if(c && c.tableNo!=null) return 'Table '+c.tableNo+(c.tableArea?(' · '+c.tableArea):''); }catch(e){}
+  try{ const c = DB.carts && DB.carts[key]; if(c && c.tableNo!=null && c.tableNo!=='QR') return 'Table '+c.tableNo+(c.tableArea?(' · '+c.tableArea):''); }catch(e){}
   if(/^TA_/.test(key))return 'Takeaway';
   if(/^DL_/.test(key))return 'Delivery';
+  if(/^QR_/.test(key)){
+    try{ const c = DB.carts && DB.carts[key]; if(c && c.cust) return 'QR #' + c.cust; }catch(e){}
+    return 'QR Order';
+  }
   if(/^t_/.test(key)) return 'Table Order';
   return key;
 }
@@ -4223,6 +4258,9 @@ const NOTIFY_SOUND_URL = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEA
 
 // ---- STATE ----
 let qrOrders = JSON.parse(localStorage.getItem('iw_qr_orders')||'[]');
+window.qrOrders = qrOrders;
+window.setQrOrders = function(list){ qrOrders = list; persistQr(); renderQrInbox(); };
+window.getQrOrders = function(){ return qrOrders; };
 let qrListenerUnsub = null;
 let lastQrCount = qrOrders.length;
 let audioCtx = null;
@@ -4319,8 +4357,10 @@ function startQrListener(){
 }
 
 function persistQr(){
+  window.qrOrders = qrOrders;
   try{ localStorage.setItem('iw_qr_orders', JSON.stringify(qrOrders.slice(0,120))); }catch(e){}
 }
+window.persistQr = persistQr;
 
 // ---- NEW ORDER HANDLER ----
 function onNewQrOrder(o){
@@ -4329,7 +4369,7 @@ function onNewQrOrder(o){
   const items = (o.items||[]).map(i=>i.name+(i.qty>1?` x${i.qty}`:'')).join(', ').slice(0,80);
   pushNotify('📱 NEW QR ORDER — '+cust, `₹${total} • ${items}`);
   // WhatsApp to owner
-  const ownerWa = localStorage.getItem(OWNER_WA_KEY) || (DB.settings && DB.settings.phone) || '';
+  const ownerWa = localStorage.getItem(OWNER_WA_KEY) || (DB.settings && DB.settings.phone) || '8850231477';
   if(ownerWa){
     const waNum = ownerWa.replace(/\D/g,'');
     const msg = `*NEW QR ORDER – INDUS WOK*%0A`+
@@ -4379,10 +4419,10 @@ function renderQrInbox(){
   if(!list.length){ el.innerHTML = '<div class="muted" style="text-align:center;padding:30px">No QR orders yet.<br>Share your QR code – orders appear here live.</div>'; return; }
   el.innerHTML = list.map(o=>{
     const st = o.status||'new';
-    const color = st==='new' ? '#b91327' : st==='accepted' ? '#e08a00' : st==='preparing' ? '#7a52d1' : st==='ready' ? '#1c9c4a' : '#555';
+    const color = st==='new' ? '#b91327' : st==='accepted' ? '#e08a00' : st==='preparing' ? '#7a52d1' : st==='ready' ? '#1c9c4a' : st==='rejected' ? '#dc2626' : '#555';
     const time = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : (o.time||'');
     const itemsHtml = (o.items||[]).map(it=>`<div style="font-size:12px;display:flex;justify-content:space-between"><span>${it.name} × ${it.qty||1}</span><b>₹${(it.price||0)*(it.qty||1)}</b></div>`).join('');
-    return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:${st==='new'?'#fff6f6':'#fff'}">
+    return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:${st==='new'?'#fff6f6':st==='rejected'?'#fef2f2':'#fff'}">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;flex-wrap:wrap">
         <div>
           <div style="font-weight:800">${o.customerName||o.name||'Customer'} <span style="font-weight:600;color:${color};font-size:11px;text-transform:uppercase"> • ${st}</span></div>
@@ -4399,16 +4439,64 @@ function renderQrInbox(){
       ${o.note?`<div style="font-size:11px;background:#fff9e6;padding:6px;border-radius:8px;margin-top:6px">📝 ${o.note}</div>`:''}
       <div class="row" style="margin-top:10px;flex-wrap:wrap">
         ${st==='new'?`<button class="btn-ok" onclick="qrUpdateStatus('${o._fid||o.id}','accepted')">✅ Accept</button>`:''}
+        ${st==='new' || st==='accepted'?`<button class="btn-ghost" style="color:#dc2626;border-color:#fca5a5" onclick="qrUpdateStatus('${o._fid||o.id}','rejected')">❌ Reject</button>`:''}
         ${st==='accepted'?`<button class="btn-primary" onclick="qrUpdateStatus('${o._fid||o.id}','preparing')">🍳 Start Cooking</button>`:''}
         ${st==='preparing'?`<button class="btn-primary" style="background:#7a52d1" onclick="qrUpdateStatus('${o._fid||o.id}','ready')">📦 Mark Ready</button>`:''}
-        ${st!=='delivered'?`<button class="btn-ghost" onclick="qrUpdateStatus('${o._fid||o.id}','delivered')">✔️ Delivered</button>`:''}
-        <button class="btn-ghost" onclick="qrPrint('${o._fid||o.id}')">🖨️ Print</button>
+        ${st!=='delivered' && st!=='rejected'?`<button class="btn-ghost" onclick="qrUpdateStatus('${o._fid||o.id}','delivered')">✔️ Delivered</button>`:''}
+        <button class="btn-ghost" onclick="qrPrint('${o._fid||o.id}')">🖨️ Print Bill</button>
+        <button class="btn-ghost" onclick="qrPrintKot('${o._fid||o.id}')">🍳 Print KOT</button>
         <button class="btn-ghost" onclick="qrWhatsApp('${o._fid||o.id}')">💬 WhatsApp Customer</button>
+        ${typeof isDeveloper==='function' && isDeveloper() ? `<button class="btn-ghost" style="color:#888;border-color:#ccc" onclick="qrDelete('${o._fid||o.id}')">🗑️ Delete (Dev)</button>` : ''}
       </div>
     </div>`;
   }).join('');
 }
 window.renderQrInbox = renderQrInbox;
+
+function syncQrToCartAndKot(o){
+  if(typeof DB === 'undefined' || !DB.carts) return;
+  const idVal = String(o._fid || o.id || 'QR');
+  const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
+  const items = (o.items || []).map(i => ({
+    id: i.id || uid('m'),
+    name: i.name || 'Item',
+    size: i.size || 'full',
+    price: +i.price || 0,
+    qty: +i.qty || 1,
+    cat: i.cat || 'QR Order',
+    sub: i.sub || '',
+    mods: i.mods || [],
+    note: i.note || ''
+  }));
+  DB.carts[key] = {
+    key: key,
+    items: items,
+    disc: { type: 'p', val: 0 },
+    phone: o.customerPhone || o.phone || '',
+    cust: o.customerName || o.name || 'Customer',
+    addr: (o.customerAddress || o.address || '') + (o.deliveryNote ? ' ('+o.deliveryNote+')' : ''),
+    mtime: Date.now(),
+    tableNo: 'QR',
+    tableArea: o.deliveryPartner || 'Online',
+    kotSent: {}
+  };
+  if(DB.kots && !DB.kots.find(k => k.id === 'KOT_' + key)){
+    DB.kots.push({
+      id: 'KOT_' + key,
+      time: nowTime(),
+      ts: Date.now(),
+      table: 'QR: ' + (o.customerName || o.name || 'Customer'),
+      type: 'QR - ' + (o.deliveryPartner || 'Takeaway'),
+      items: items.map(i => ({ name: i.name, size: i.size, qty: i.qty, sub: i.sub, mods: i.mods||[], note: i.note||'' })),
+      status: 'new',
+      by: 'Customer QR'
+    });
+  }
+  save();
+  if(typeof renderPrintStation === 'function') renderPrintStation();
+  if(typeof renderKDS === 'function') renderKDS();
+  if(typeof renderTables === 'function') renderTables();
+}
 
 // ---- ACTIONS ----
 window.qrUpdateStatus = async function(fid, status){
@@ -4421,31 +4509,90 @@ window.qrUpdateStatus = async function(fid, status){
     const db = firebase.firestore();
     await db.collection(QR_COLLECTION).doc(o._fid||o.id).set({status, updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
   }catch(e){}
-  // push to KDS if accepted
-  if(status==='accepted' && typeof addKot==='function'){
-    try{ /* optional KDS push */ }catch(e){}
+  if(status === 'accepted' || status === 'preparing' || status === 'ready'){
+    syncQrToCartAndKot(o);
+  } else if(status === 'rejected'){
+    const idVal = String(o._fid || o.id || 'QR');
+    const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
+    if(typeof DB !== 'undefined' && DB.carts && DB.carts[key]){
+      delete DB.carts[key];
+      save();
+      if(typeof renderPrintStation === 'function') renderPrintStation();
+    }
   }
 };
 
+window.qrDelete = async function(fid){
+  if(!confirm('Developer: Permanently delete this QR order?')) return;
+  qrOrders = qrOrders.filter(x=>(x._fid||x.id)!==fid);
+  persistQr(); renderQrInbox(); toast('QR order deleted');
+  const idVal = String(fid);
+  const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
+  if(typeof DB !== 'undefined' && DB.carts && DB.carts[key]){
+    delete DB.carts[key];
+    save();
+    if(typeof renderPrintStation === 'function') renderPrintStation();
+  }
+  try{
+    const db = firebase.firestore();
+    await db.collection(QR_COLLECTION).doc(fid).delete();
+  }catch(e){}
+};
+
+function makeQrBillObj(o, isKot){
+  const fid = o._fid || o.id || 'QR';
+  const sub = (o.items||[]).reduce((acc, i) => acc + (+i.price||0) * (+i.qty||1), 0);
+  const total = +o.total || sub;
+  const disc = Math.max(0, sub - total);
+  const timeStr = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : (o.time || nowTime());
+  const dateStr = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN') : todayStr();
+  return {
+    no: o.id || fid,
+    date: dateStr,
+    time: timeStr,
+    type: 'QR - ' + (o.deliveryPartner || 'Takeaway'),
+    table: 'QR Order',
+    cust: o.customerName || o.name || 'Customer',
+    phone: o.customerPhone || o.phone || '',
+    addr: (o.customerAddress || o.address || '') + (o.deliveryNote ? ' (' + o.deliveryNote + ')' : ''),
+    by: 'Customer QR',
+    mode: 'QR / Online',
+    items: (o.items || []).map(i => ({
+      name: i.name || 'Item',
+      size: i.size || 'full',
+      price: +i.price || 0,
+      qty: +i.qty || 1,
+      mods: i.mods || [],
+      note: i.note || ''
+    })),
+    totals: { sub, disc, cgst: 0, sgst: 0, total, gstOn: false },
+    total: total
+  };
+}
+window.makeQrBillObj = makeQrBillObj;
+
 window.qrPrint = function(fid){
   const o = qrOrders.find(x=>(x._fid||x.id)===fid); if(!o) return;
-  const w = window.open('','_blank','width=340,height=700');
-  w.document.write(`<pre style="font-family:monospace;font-size:13px;width:280px">
-🥢 INDUS WOK - QR ORDER
-${o.id||fid}
-------------------------
-${o.customerName||''}
-${o.customerPhone||''}
-${o.customerAddress||''}
-Delivery: ${o.deliveryPartner||''}
-------------------------
-${(o.items||[]).map(i=>`${i.name} x${i.qty||1}  ₹${(i.price||0)*(i.qty||1)}`).join('\n')}
-------------------------
-TOTAL: ₹${o.total||0}
-${o.note? 'Note: '+o.note : ''}
-Thank you!
-</pre>`);
-  w.document.close(); w.print();
+  const b = makeQrBillObj(o, false);
+  const html = buildReceiptHTML(b, false);
+  if(typeof printProfile === 'function' && printProfile('bill').autoPrint){
+    window.__printHTML = html; window.__printKind = 'bill'; window.__printBill = b;
+    sendToPrinter('bill', true);
+  } else {
+    doPrint(html, '📱 QR Order ' + b.no, 'bill', b);
+  }
+};
+
+window.qrPrintKot = function(fid){
+  const o = qrOrders.find(x=>(x._fid||x.id)===fid); if(!o) return;
+  const b = makeQrBillObj(o, true);
+  const html = buildReceiptHTML(b, true);
+  if(typeof printProfile === 'function' && printProfile('kot').autoPrint){
+    window.__printHTML = html; window.__printKind = 'kot'; window.__printBill = b;
+    sendToPrinter('kot', true);
+  } else {
+    doPrint(html, '🍳 QR KOT ' + b.no, 'kot', b);
+  }
 };
 
 window.qrWhatsApp = function(fid){
@@ -4501,7 +4648,7 @@ function qrInitUI(){
       '<option value="delivery">🚚 Delivery QR</option><option value="main">🏪 Main Entrance</option>';
   }
   const waEl = document.getElementById('qrOwnerWa');
-  if(waEl) waEl.value = localStorage.getItem(OWNER_WA_KEY) || (typeof DB!=='undefined' && DB.settings ? DB.settings.phone : '') || '';
+  if(waEl) waEl.value = localStorage.getItem(OWNER_WA_KEY) || (typeof DB!=='undefined' && DB.settings ? DB.settings.phone : '') || '8850231477';
   const addrEl = document.getElementById('qrPickupAddr');
   if(addrEl) addrEl.value = localStorage.getItem(PICKUP_ADDR_KEY) || (typeof DB!=='undefined' && DB.settings ? ((DB.settings.addr1||'')+' '+(DB.settings.addr2||'')).trim() : '') || 'Indus Wok, Mumbai';
   const urlInput = document.getElementById('qrOrderUrl');
