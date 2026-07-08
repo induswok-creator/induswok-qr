@@ -108,6 +108,8 @@
   .table-cell.reserved{border-color:#d8caf2;background:#f8f5ff}
   .table-cell.reserved .ts{color:var(--res)}
   .table-cell .amt{font-size:12px;font-weight:700;color:var(--red);margin-top:4px}
+.manage-table-row{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:10px;margin:6px 0;background:#fff}
+.manage-table-row b{min-width:95px}.manage-table-row small{color:var(--muted);flex:1}
   .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:12px}
   .legend span b{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:4px;vertical-align:middle}
 
@@ -336,9 +338,10 @@
       <div class="row" style="align-items:center;margin-bottom:6px">
         <h2 style="margin:0">🪑 Tables — tap a table to start billing</h2>
         <div class="grow"></div>
+        <button class="btn-ok" onclick="qrEnableNotify()">🔔 Enable Alerts</button>
         <button class="btn-ghost" id="takeawayBtn">🛍️ Takeaway</button>
         <button class="btn-ghost" id="deliveryBtn">🚚 Delivery</button>
-        <button class="btn-ghost" id="manageTablesBtn">⚙️ Manage Tables</button>
+        <button class="btn-ghost" id="manageTablesBtn">➕ Add / 🗑️ Delete Tables</button>
       </div>
       <div class="area-tabs" id="areaTabs"></div>
       <div class="legend">
@@ -468,7 +471,7 @@
       </div>
       <div class="card" style="margin-top:14px">
         <div class="row" style="align-items:center"><h3 style="margin:0">📋 Menu Items (<span id="menuCount">0</span>)</h3><div class="grow"></div><input id="menuMgrSearch" placeholder="Search..." style="max-width:200px"><button class="btn-warn" onclick="clearAllMenu()">🗑️ Clear All</button></div>
-        <div class="scroll" style="margin-top:8px"><table id="menuTable"><thead><tr><th>Item</th><th>Category</th><th>Sub</th><th>Full</th><th>Half</th><th>Type</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="scroll" style="margin-top:8px"><table id="menuTable"><thead><tr><th>Item</th><th>Category</th><th>Sub</th><th>Full</th><th>Half</th><th>Type</th><th>Stock</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
     </section>
 
@@ -793,7 +796,7 @@
 
           <div class="card" style="margin-top:12px;background:#f6fff9;border-color:#bfe6cd">
             <h3>📲 Owner Alerts</h3>
-            <div class="field"><label>WhatsApp Owner Number</label><input id="qrOwnerWa" placeholder="+91 8850231477"></div>
+            <div class="field"><label>WhatsApp Owner Number</label><input id="qrOwnerWa" placeholder="+91 8850241377"></div>
             <div class="field"><label>Restaurant Pickup Address (for delivery apps)</label><textarea id="qrPickupAddr" rows="2" placeholder="Indus Wok, 123 Andheri West, Mumbai"></textarea></div>
             <button class="btn-ok" style="width:100%" onclick="saveQrSettings()">💾 Save Alert Settings</button>
             <p class="muted" style="font-size:11px;margin-top:8px">✅ Browser push + sound + WhatsApp order share — all enabled</p>
@@ -847,7 +850,7 @@
             // 1) try DB.tables (mainprinting DB)
             let list=[];
             if(typeof DB!=='undefined' && DB.tables && DB.tables.length){
-              list = DB.tables.map(t=> t.name || t.id);
+              list = DB.tables.map(t=> tableDisplay(t));
             }
             // 2) fallback firestore
             if(!list.length && typeof firebase!=='undefined' && firebase.apps.length){
@@ -881,7 +884,10 @@
           const size = (document.getElementById('tableQrSize')||{}).value || '280';
           const base = (location.origin + location.pathname.replace(/index\.html?$/,'').replace(/\/$/,'/') + 'customer-order.html');
           grid.innerHTML = tqTables.map(name=>{
-            const url = base + '?table=' + encodeURIComponent(name) + '&src=qr_dinein';
+            const t = (typeof DB!=='undefined' && DB.tables) ? DB.tables.find(x=>tableDisplay(x)===name || String(x.id)===name || String(x.no)===name || ('Table '+x.no)===name) : null;
+            const label = t ? tableDisplay(t) : name;
+            const extra = t ? ('&tid='+encodeURIComponent(t.id)+'&no='+encodeURIComponent(t.no||'')+'&area='+encodeURIComponent(t.area||'')+'&src=qr_table') : '&src=qr_dinein';
+            const url = base + '?table=' + encodeURIComponent(label) + extra;
             const qr = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}&qzone=2&ecc=H`;
             const safe = name.replace(/[^a-z0-9]+/gi,'-');
             return `<div class="tqr-card">
@@ -942,7 +948,7 @@
           <div class="field"><label>Phone</label><input id="setPhone"></div>
           <div class="field"><label>Address Line 1</label><input id="setAddr1"></div>
           <div class="field"><label>Address Line 2</label><input id="setAddr2"></div>
-          <div class="row"><div class="grow field"><label>GSTIN (optional)</label><input id="setGst"></div><div class="grow field"><label>UPI ID (optional)</label><input id="setUpi"></div></div>
+          <div class="row"><div class="grow field"><label>GSTIN (optional)</label><input id="setGst"></div><div class="grow field"><label>UPI ID</label><input id="setUpi" placeholder="Q496128216@ybl"></div></div>
           <div class="field" style="background:#fff6f4;border:1px solid var(--line);border-radius:10px;padding:10px">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:0"><input type="checkbox" id="setGstEnabled" style="width:auto" onchange="toggleGstFields()"> Charge GST on bills (turn ON only if you bill GST)</label>
             <div id="gstRates" class="row" style="margin-top:8px"><div class="grow field" style="margin:0"><label>CGST %</label><input id="setCgst" type="number" step="0.01"></div><div class="grow field" style="margin:0"><label>SGST %</label><input id="setSgst" type="number" step="0.01"></div></div>
@@ -984,6 +990,9 @@
               <div class="row" style="margin-top:8px">
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="setRawbtQR" style="width:auto"> Print UPI "Scan & Pay" QR on bill</label>
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="setRawbtCut" style="width:auto"> Auto paper-cut after print</label>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="setVoiceAnnounce" style="width:auto" checked> 🔊 Voice Announcements for Kitchen & Cashier (Web Speech API)</label>
               </div>
               <div class="row" style="margin-top:10px">
                 <button class="btn-ghost grow" onclick="testRawbtBill()">📲 Test Bill (RawBT)</button>
@@ -1029,6 +1038,23 @@
           <button class="btn-primary" onclick="addUser()">➕ Add User</button>
         </div>
         <div class="scroll"><table id="usersTable"><thead><tr><th>User</th><th>Role</th><th>PIN</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="card" style="margin-top:14px;background:#fffdf6;border-color:#e8d1a0">
+          <h3>🔐 Role Access Permissions (RBAC)</h3>
+          <p class="muted" style="font-size:11px;margin:0 0 8px">Owner & Developer always have full access. Configure permissions for staff roles below:</p>
+          <div class="scroll">
+            <table id="rbacTable" style="width:100%;font-size:12px;border-collapse:collapse;text-align:center">
+              <thead><tr style="border-bottom:2px solid var(--gold)">
+                <th style="text-align:left;padding:6px">Role</th>
+                <th>Apply Discounts</th>
+                <th>Delete / Void KOT</th>
+                <th>Edit Menu / Stock</th>
+                <th>View Reports & Payroll</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button class="btn-primary" style="margin-top:10px" onclick="saveRbac()">💾 Save Permissions</button>
+        </div>
       </div>
       <div class="card" style="margin-top:14px"><h3>💾 Backup & Restore</h3>
         <div class="row"><button class="btn-ghost" onclick="exportBackup()">⬇️ Export Backup (.json)</button>
@@ -1129,7 +1155,8 @@ function load(){
     if(!d.settings.firebaseProjectId)d.settings.firebaseProjectId='induswokpos';
     if(!d.settings.firebaseAppId)d.settings.firebaseAppId='1:761865480325:web:2ff33ec8a2e00dd057e1ec';
     if(!d.settings.firebaseDocPath)d.settings.firebaseDocPath='pos/induswok-default';
-    if(!d.settings.phone || d.settings.phone.includes('98765')) d.settings.phone='8850231477';
+    if(!d.settings.phone || d.settings.phone.includes('98765') || d.settings.phone.includes('8850231477')) d.settings.phone='8850241377';
+    if(!d.settings.upi || d.settings.upi.includes('induswok@upi')) d.settings.upi='Q496128216@ybl';
     ensurePrintSettings(d.settings);
     ensurePartnerUser(d);
     // One-time menu upgrade: replace the old demo menu with the full Indus Wok menu.
@@ -1289,7 +1316,7 @@ a("Sizzlers","","Chinese Mixed Grill",450,0,"nonveg");
   const _recipesDummy=[
   ];
   return {
-    settings:{name:'Indus Wok',tagline:'Asian · Chinese · Pan-Asian Kitchen',phone:'8850231477',addr1:'',addr2:'',gst:'',upi:'',thanks:'Thank you! Visit again 🥢',gstEnabled:false,cgst:2.5,sgst:2.5,roll:72,font:12,autoPrint:true,billRoll:72,billFont:12,billAutoPrint:true,kotRoll:72,kotFont:13,kotAutoPrint:false,rawbtBill:true,rawbtKot:true,rawbtChars:32,rawbtQR:true,rawbtCut:true,syncUrl:'',licenseUrl:'',aiProv:'gemini',aiKey:'',firebaseApiKey:'AIzaSyBHYkp_aqgewS7MUy2cfk3r98aXEftlcsM',firebaseProjectId:'induswokpos',firebaseAppId:'1:761865480325:web:2ff33ec8a2e00dd057e1ec',firebaseDocPath:'pos/induswok-default'},
+    settings:{name:'Indus Wok',tagline:'Asian · Chinese · Pan-Asian Kitchen',phone:'8850241377',addr1:'',addr2:'',gst:'',upi:'Q496128216@ybl',thanks:'Thank you! Visit again 🥢',gstEnabled:false,cgst:2.5,sgst:2.5,roll:72,font:12,autoPrint:true,billRoll:72,billFont:12,billAutoPrint:true,kotRoll:72,kotFont:13,kotAutoPrint:false,rawbtBill:true,rawbtKot:true,rawbtChars:32,rawbtQR:true,rawbtCut:true,voiceAnnounce:true,rbac:{Manager:{disc:true,void:true,menu:true,rep:true},Cashier:{disc:true,void:false,menu:false,rep:false},Waiter:{disc:false,void:false,menu:false,rep:false},Partner:{disc:false,void:false,menu:false,rep:true}},syncUrl:'',licenseUrl:'',aiProv:'gemini',aiKey:'',firebaseApiKey:'AIzaSyBHYkp_aqgewS7MUy2cfk3r98aXEftlcsM',firebaseProjectId:'induswokpos',firebaseAppId:'1:761865480325:web:2ff33ec8a2e00dd057e1ec',firebaseDocPath:'pos/induswok-default'},
     users:[{name:'Owner',pin:'1111',role:'Owner'},{name:'Cashier',pin:'2222',role:'Cashier'},{name:'Waiter',pin:'3333',role:'Waiter'},{name:'Partner',pin:'4444',role:'Partner'},{name:'Developer',pin:DEV_SECRET_PIN,role:'Developer',hidden:true}],
     menuVersion:MENU_VERSION,
     menu,tables,bills:[],expenses:[],inventory,vendors,recipes,vendorTxns:[],deductions:[],staff:[],attendance:[],sessions:[],payments:[],customers:[],kots:[],archivedBills:[],
@@ -1405,9 +1432,72 @@ const ROLE_TABS={
   Cashier:['tables','kds','menu','billing','print'],
   Waiter:['tables','kds','menu','billing','print']
 };
+
+const DEFAULT_RBAC = {
+  Manager: { disc: true, void: true, menu: true, rep: true },
+  Cashier: { disc: true, void: false, menu: false, rep: false },
+  Waiter:  { disc: false, void: false, menu: false, rep: false },
+  Partner: { disc: false, void: false, menu: false, rep: true }
+};
+function getRbac(role){
+  if(role==='Owner' || role==='Developer') return { disc: true, void: true, menu: true, rep: true };
+  const r = (DB && DB.settings && DB.settings.rbac) || DEFAULT_RBAC;
+  return r[role] || { disc: false, void: false, menu: false, rep: false };
+}
+function renderRbac(){
+  const tb = document.querySelector('#rbacTable tbody');
+  if(!tb) return;
+  const r = (DB && DB.settings && DB.settings.rbac) || DEFAULT_RBAC;
+  const roles = ['Manager', 'Cashier', 'Waiter', 'Partner'];
+  tb.innerHTML = roles.map(role => {
+    const p = r[role] || { disc: false, void: false, menu: false, rep: false };
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="text-align:left;font-weight:800;padding:8px">${role}</td>
+      <td><input type="checkbox" id="rbac_${role}_disc" ${p.disc ? 'checked' : ''}></td>
+      <td><input type="checkbox" id="rbac_${role}_void" ${p.void ? 'checked' : ''}></td>
+      <td><input type="checkbox" id="rbac_${role}_menu" ${p.menu ? 'checked' : ''}></td>
+      <td><input type="checkbox" id="rbac_${role}_rep" ${p.rep ? 'checked' : ''}></td>
+    </tr>`;
+  }).join('');
+}
+function saveRbac(){
+  const roles = ['Manager', 'Cashier', 'Waiter', 'Partner'];
+  let r = {};
+  roles.forEach(role => {
+    r[role] = {
+      disc: !!(document.getElementById(`rbac_${role}_disc`)?.checked),
+      void: !!(document.getElementById(`rbac_${role}_void`)?.checked),
+      menu: !!(document.getElementById(`rbac_${role}_menu`)?.checked),
+      rep:  !!(document.getElementById(`rbac_${role}_rep`)?.checked)
+    };
+  });
+  if(!DB.settings) DB.settings = {};
+  DB.settings.rbac = r;
+  save(); toast('✅ Role access permissions saved!');
+}
+window.renderRbac = renderRbac; window.saveRbac = saveRbac; window.getRbac = getRbac;
+
+function speakAnnouncement(text){
+  try{
+    if(DB && DB.settings && DB.settings.voiceAnnounce === false) return;
+    if('speechSynthesis' in window){
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.0; u.pitch = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e){}
+}
+window.speakAnnouncement = speakAnnouncement;
+
 function allowedTabs(){
   const r=CUR&&CUR.role;
-  return (ROLE_TABS[r]) ? ROLE_TABS[r] : TABS.map(t=>t[0]); // full access for Owner/Manager/others
+  if(!r || r==='Owner' || r==='Developer') return TABS.map(t=>t[0]);
+  let allow = (ROLE_TABS[r]) ? ROLE_TABS[r].slice() : TABS.map(t=>t[0]);
+  const p = getRbac(r);
+  if(!p.rep){ allow = allow.filter(t=>!['sales','payroll','exp'].includes(t)); }
+  if(!p.menu){ allow = allow.filter(t=>!['menu','inv'].includes(t)); }
+  return allow;
 }
 function canAccess(id){ return allowedTabs().includes(id); }
 function buildTabs(){
@@ -1588,21 +1678,40 @@ function renderKDS(){
   g.innerHTML='';
   active.forEach(k=>{
     const mins=Math.floor((Date.now()-k.ts)/60000);
-    const urgent=mins>=10;
+    let slaBadge = '';
+    let slaBorder = '#138a4a';
+    let slaBg = '#fff';
+    if(mins < 10){
+      slaBadge = `<span style="font-size:11px;padding:2px 8px;background:#e8fff1;color:#138a4a;border-radius:99px;font-weight:800">🟢 Under 10m</span>`;
+      slaBorder = k.status==='preparing' ? '#e08a00' : '#138a4a';
+    } else if(mins <= 15){
+      slaBadge = `<span style="font-size:11px;padding:2px 8px;background:#fff9e6;color:#e08a00;border-radius:99px;font-weight:800">🟡 ${mins}m — Warning</span>`;
+      slaBorder = '#e08a00';
+      slaBg = '#fffcf0';
+    } else {
+      slaBadge = `<span style="font-size:11px;padding:2px 8px;background:#fce8e6;color:#d93025;border-radius:99px;font-weight:800">🔴 ${mins}m OVERDUE!</span>`;
+      slaBorder = '#d93025';
+      slaBg = '#fff5f5';
+    }
     const card=document.createElement('div');
     card.className='table-cell';
-    card.style.cssText='text-align:left;padding:12px;border:2px solid '+(k.status==='preparing'?'#e08a00':(urgent?'#c81d25':'#bfe6cd'))+';background:'+(urgent?'#fff5f5':'#fff')+';cursor:default';
-    card.innerHTML=`<div class="row" style="align-items:center"><b style="font-size:14px">${k.table}</b><div class="grow"></div><span class="muted" style="font-size:11px">${k.time} · ${mins}m</span></div>
-      <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">${k.type} · by ${k.by}</div>
-      ${k.items.map(i=>{const d=[i.sub,itemInstructionText(i)].filter(Boolean).join(' · '),can=!!i.cancelled;const nm=`${i.qty}× ${escHTML(i.name)}${i.size==='half'?' <small>(H)</small>':''}`;return `<div style="font-size:14px;font-weight:600;${can?'color:#777':''}">${can?`<span style="text-decoration:line-through">${nm}</span> <span style="color:var(--red);font-weight:900">(CANCELLED)</span>`:nm}${d?`<div style="font-size:12px;color:${can?'#777':'var(--red-d)'};font-weight:700">${escHTML(d)}</div>`:''}</div>`;}).join('')}
-      <div class="row" style="margin-top:8px">
-        ${k.status==='new'?`<button class="btn-warn grow" style="font-size:12px;padding:6px" onclick="kotStatus('${k.id}','preparing')">👨‍🍳 Preparing</button>`:''}
-        <button class="btn-ok grow" style="font-size:12px;padding:6px" onclick="kotStatus('${k.id}','done')">✅ Done</button>
+    card.style.cssText='text-align:left;padding:12px;border:2px solid '+slaBorder+';background:'+slaBg+';cursor:default;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.05)';
+    card.innerHTML=`<div class="row" style="align-items:center;margin-bottom:4px"><b style="font-size:15px;color:#111">${k.table}</b><div class="grow"></div>${slaBadge}</div>
+      <div class="row" style="justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:8px;border-bottom:1px dashed var(--line);padding-bottom:4px"><span>${k.type} · by ${k.by}</span><span>🕒 ${k.time} (${mins}m ago)</span></div>
+      ${k.items.map(i=>{const d=[i.sub,itemInstructionText(i)].filter(Boolean).join(' · '),can=!!i.cancelled;const nm=`${i.qty}× ${escHTML(i.name)}${i.size==='half'?' <small>(H)</small>':''}`;return `<div style="font-size:14px;font-weight:600;margin-bottom:4px;${can?'color:#777':''}">${can?`<span style="text-decoration:line-through">${nm}</span> <span style="color:var(--red);font-weight:900">(CANCELLED)</span>`:nm}${d?`<div style="font-size:12px;color:${can?'#777':'var(--red-d)'};font-weight:700;margin-left:14px">${escHTML(d)}</div>`:''}</div>`;}).join('')}
+      <div class="row" style="margin-top:10px">
+        ${k.status==='new'?`<button class="btn-warn grow" style="font-size:12px;padding:8px;border-radius:8px" onclick="kotStatus('${k.id}','preparing')">👨‍🍳 Start Preparing</button>`:''}
+        <button class="btn-ok grow" style="font-size:12px;padding:8px;border-radius:8px" onclick="kotStatus('${k.id}','done')">✅ Mark Done</button>
       </div>`;
     g.appendChild(card);
   });
 }
-function kotStatus(id,st){const k=DB.kots.find(x=>x.id===id);if(k){k.status=st;save();renderKDS();}}
+function kotStatus(id,st){
+  if(st==='done' && CUR && typeof getRbac==='function' && !getRbac(CUR.role).void && !canAccess('kds')){
+    toast('⛔ Permission denied: Role restricted from clearing KOTs'); return;
+  }
+  const k=DB.kots.find(x=>x.id===id);if(k){k.status=st;save();renderKDS();}
+}
 function clearDoneKOTs(){DB.kots=DB.kots.filter(k=>k.status!=='done');save();renderKDS();}
 
 /* ---------- PRINT STATION ---------- */
@@ -1811,6 +1920,10 @@ function printStationSettle(key) {
   }
 }
 
+function tableDisplay(t){
+  if(!t) return 'Table';
+  return (t.name && String(t.name).trim()) || ('Table '+t.no+(t.area?(' · '+t.area):''));
+}
 function renderTables(){
   const areas=[...new Set(DB.tables.map(t=>t.area))];
   if(!curArea||!areas.includes(curArea))curArea=areas[0];
@@ -1849,21 +1962,40 @@ function openTable(t){
 }
 function manageTables(){
   const areas=[...new Set(DB.tables.map(t=>t.area))];
-  const html=`<div class="box"><h2>⚙️ Manage Tables</h2>
+  const rows=(DB.tables||[]).slice().sort((a,b)=>String(a.area||'').localeCompare(String(b.area||''))||(+a.no||0)-(+b.no||0)).map(t=>{
+    const active=DB.carts[t.id]&&((DB.carts[t.id].items||[]).length||hasKotSent(DB.carts[t.id]));
+    return `<div class="manage-table-row">
+      <b>${escHTML(tableDisplay(t))}</b>
+      <small>ID: ${escHTML(t.id)} ${active?'• Active order':''}</small>
+      <button class="btn-ghost" style="color:#dc2626;border-color:#fca5a5" onclick="deleteTable('${t.id}')" ${active?'disabled title="Settle/clear active order first"':''}>🗑️ Delete</button>
+    </div>`;
+  }).join('') || '<div class="muted" style="padding:10px">No tables yet. Add tables below.</div>';
+  const html=`<div class="box"><h2>➕ Add / 🗑️ Delete Tables</h2>
    <div class="field"><label>Add tables to area</label>
-     <div class="row"><input id="mtArea" list="mtAreas" placeholder="Area name" class="grow"><datalist id="mtAreas">${areas.map(a=>`<option>${a}</option>`).join('')}</datalist>
+     <div class="row"><input id="mtArea" list="mtAreas" placeholder="Area name" class="grow"><datalist id="mtAreas">${areas.map(a=>`<option>${escHTML(a)}</option>`).join('')}</datalist>
      <input id="mtCount" type="number" placeholder="How many" style="max-width:110px"></div></div>
-   <button class="btn-primary" onclick="addTables()">➕ Add</button>
-   <hr><div class="muted" style="font-size:12px">Right-click a table to toggle Reserved. Current: ${DB.tables.length} tables.</div>
+   <button class="btn-primary" onclick="addTables()">➕ Add Tables</button>
+   <hr><div class="muted" style="font-size:12px;margin-bottom:6px">Right-click / long-press a table tile to toggle Reserved. Delete is blocked when a table has an active order.</div>
+   <div style="max-height:42vh;overflow:auto">${rows}</div>
    <div class="row" style="margin-top:8px"><button class="btn-ghost grow" onclick="closeModal()">Close</button></div></div>`;
   openModal(html);
 }
 function addTables(){
   const area=$('#mtArea').value.trim()||'Ground Floor';const n=+$('#mtCount').value||0;
+  if(n<=0){toast('Enter number of tables','warning');return;}
   const existing=DB.tables.filter(t=>t.area===area).length;
-  for(let i=1;i<=n;i++){DB.tables.push({id:uid('t'),no:existing+i,area,status:'available'});}
+  for(let i=1;i<=n;i++){DB.tables.push({id:uid('t'),no:existing+i,area,status:'available',updatedAt:Date.now()});}
   save();closeModal();renderTables();toast('Added '+n+' tables');
+  try{ if(typeof tableQrPull==='function') tableQrPull(); }catch(e){}
 }
+window.deleteTable = function(id){
+  const t=(DB.tables||[]).find(x=>x.id===id); if(!t)return;
+  if(DB.carts[id]&&((DB.carts[id].items||[]).length||hasKotSent(DB.carts[id]))){toast('Cannot delete: table has active order','warning');return;}
+  if(!confirm('Delete '+tableDisplay(t)+'?'))return;
+  DB.tables=DB.tables.filter(x=>x.id!==id);
+  if(DB.carts[id])delete DB.carts[id];
+  save();closeModal();renderTables();toast('Table deleted');
+};
 
 /* ---------- BILLING ---------- */
 let curOrder=null, cart=null;
@@ -2088,12 +2220,13 @@ function renderMenuGrid(){
   items.forEach((m,idx)=>{
     const half=halfPrice(m);
     const d=document.createElement('div');d.className='menu-item';
-    d.innerHTML=`<div class="row" style="gap:6px;align-items:center"><span class="veg ${m.veg==='veg'?'v':'n'}"></span><span class="name">${m.name}</span></div>
+    if(m.outOfStock) d.style.cssText = 'opacity:0.55;background:#fdfdfd;pointer-events:none';
+    d.innerHTML=`<div class="row" style="gap:6px;align-items:center"><span class="veg ${m.veg==='veg'?'v':'n'}"></span><span class="name">${m.name} ${m.outOfStock?'<span style="color:#d93025;font-size:10px;padding:2px 4px;background:#fce8e6;border-radius:4px">SOLD OUT</span>':''}</span></div>
       ${m.sub?`<div class="muted" style="font-size:11px">${m.sub}</div>`:''}
-      <div class="size-btns">
+      ${m.outOfStock ? '<div style="color:#d93025;font-size:12px;font-weight:bold;padding:6px 0;text-align:center">🚫 Sold Out</div>' : `<div class="size-btns">
         <button class="sz-f" data-id="${m.id}" data-size="full">F ${money(m.full)}</button>
         ${half>0?`<button class="sz-h" data-id="${m.id}" data-size="half">H ${money(half)}</button>`:''}
-      </div>`;
+      </div>`}`;
     g.appendChild(d);
   });
   // wire the F / H buttons
@@ -2580,7 +2713,7 @@ function importCustomers(rows){
 }
 function downloadCustTemplate(){
   const rows=[['Name','Phone','Address'],
-    ['Rahul Sharma','8850231477','12 MG Road, Near Park'],
+    ['Rahul Sharma','8850241377','12 MG Road, Near Park'],
     ['Aisha Khan','9123456780','Flat 4B, Green Apartments']];
   dl('indus-wok-customers-template.csv',rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n'),'text/csv');
 }
@@ -2616,9 +2749,21 @@ function renderMenuMgr(){
   const q=($('#menuMgrSearch').value||'').toLowerCase();
   const tb=$('#menuTable tbody');tb.innerHTML='';
   const items=DB.menu.filter(m=>!q||m.name.toLowerCase().includes(q)||m.cat.toLowerCase().includes(q));
-  items.forEach(m=>{tb.innerHTML+=`<tr><td>${m.name}</td><td>${m.cat}</td><td>${m.sub||'-'}</td><td>${money(m.full)}</td><td>${m.half?money(m.half):'-'}</td><td>${m.veg==='veg'?'🟢':'🔴'}</td><td><button class="btn-ghost" onclick="editMenu('${m.id}')">✏️</button> <button class="btn-ghost" onclick="delMenu('${m.id}')">🗑️</button></td></tr>`;});
+  items.forEach(m=>{
+    const stockBtn = `<button class="btn-ghost" style="padding:4px 8px;font-size:11px;background:${m.outOfStock ? '#fce8e6' : '#e8fff1'};color:${m.outOfStock ? '#d93025' : '#138a4a'};font-weight:700;border-radius:6px" onclick="toggleStock('${m.id}')">${m.outOfStock ? '🚫 Sold Out' : '🟢 In Stock'}</button>`;
+    tb.innerHTML+=`<tr><td>${m.name}</td><td>${m.cat}</td><td>${m.sub||'-'}</td><td>${money(m.full)}</td><td>${m.half?money(m.half):'-'}</td><td>${m.veg==='veg'?'🟢':'🔴'}</td><td>${stockBtn}</td><td><button class="btn-ghost" onclick="editMenu('${m.id}')">✏️</button> <button class="btn-ghost" onclick="delMenu('${m.id}')">🗑️</button></td></tr>`;
+  });
   $('#menuCount').textContent=DB.menu.length;
 }
+function toggleStock(id){
+  const m = DB.menu.find(x=>x.id===id); if(!m) return;
+  m.outOfStock = !m.outOfStock;
+  save(); renderMenuMgr();
+  if(typeof renderMenuGrid==='function') renderMenuGrid();
+  if(typeof pushMenuToAll==='function') pushMenuToAll();
+  toast(`${m.name} → ${m.outOfStock ? '🚫 Sold Out' : '🟢 In Stock'}`);
+}
+window.toggleStock = toggleStock;
 let editId=null;
 function editMenu(id){const m=DB.menu.find(x=>x.id===id);editId=id;$('#miName').value=m.name;$('#miCat').value=m.cat;$('#miSub').value=m.sub||'';$('#miFull').value=m.full;$('#miHalf').value=m.half||'';$('#miVeg').value=m.veg;window.scrollTo(0,0);}
 function delMenu(id){confirmDlg('Delete this menu item?',function(){DB.menu=DB.menu.filter(x=>x.id!==id);save();renderMenuMgr();},'Delete');}
@@ -2774,7 +2919,7 @@ async function aiExtract(b64,mime){
   const s=DB.settings;
   if(!b64)throw new Error('the image could not be encoded');
   if(s.aiProv==='gemini'){
-    const models=['gemini-2.0-flash','gemini-2.5-flash','gemini-1.5-flash'];
+    const models=['gemini-1.5-flash','gemini-2.0-flash','gemini-2.5-flash'];
     let lastErr='';
     for(const model of models){
       const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(s.aiKey);
@@ -3378,7 +3523,7 @@ async function aiAskFull(q){
 async function aiText(prompt){
   const s=DB.settings;
   if(s.aiProv==='gemini'){
-    const url='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+s.aiKey;
+    const url='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+s.aiKey;
     const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
     const j=await res.json();return j.candidates?.[0]?.content?.parts?.[0]?.text||'(no answer)';
   }else{
@@ -4077,6 +4222,10 @@ function notifyNewOrder(keys){
   beep();
   const names=keys.map(tableNoFor);
   toast('🔔 New order: '+names.join(', '));
+  if(typeof speakAnnouncement==='function') speakAnnouncement('New order alert for ' + names.join(', '));
+  if('Notification' in window && Notification.permission==='granted'){
+    try{ new Notification('🔔 Indus Wok new order', {body:names.join(', '), icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="14" width="64" height="64" fill="%23b91327"/><text x="32" y="39" text-anchor="middle" font-size="30" fill="white">🥢</text></svg>'}); }catch(e){}
+  }
   const b=document.getElementById('orderAlert');
   if(b){
     b.style.display='flex';
@@ -4343,11 +4492,18 @@ function startQrListener(){
               if(age < 180000){
                 onNewQrOrder(d);
               }
+              if(typeof isTableQrOrder==='function' && isTableQrOrder(d)){
+                syncQrToCartAndKot(d);
+                setTimeout(()=>qrAutoAccept(d), 120);
+              }
             }
           }
           if(ch.type==='modified'){
             const idx = qrOrders.findIndex(x=>x._fid===d._fid || x.id===d.id);
             if(idx>=0){ qrOrders[idx]=d; changed=true; }
+            if(typeof isTableQrOrder==='function' && isTableQrOrder(d) && !['rejected','delivered'].includes(d.status||'')){
+              syncQrToCartAndKot(d);
+            }
           }
         });
         if(changed){ persistQr(); renderQrInbox(); }
@@ -4367,9 +4523,12 @@ function onNewQrOrder(o){
   const cust = o.customerName || o.name || 'Customer';
   const total = o.total || 0;
   const items = (o.items||[]).map(i=>i.name+(i.qty>1?` x${i.qty}`:'')).join(', ').slice(0,80);
-  pushNotify('📱 NEW QR ORDER — '+cust, `₹${total} • ${items}`);
+  const tableTxt = (typeof isTableQrOrder==='function' && isTableQrOrder(o)) ? (' • '+(o.table || (findTableForQr(o)?tableDisplay(findTableForQr(o)):'Table QR'))) : '';
+  pushNotify('📱 NEW QR ORDER — '+cust+tableTxt, `₹${total} • ${items}`);
+  if(typeof speakAnnouncement==='function') speakAnnouncement((tableTxt?'New table QR order received ':'New online order received ') + 'from ' + cust + ' for rupees ' + total + '!');
   // WhatsApp to owner
-  const ownerWa = localStorage.getItem(OWNER_WA_KEY) || (DB.settings && DB.settings.phone) || '8850231477';
+  let ownerWa = localStorage.getItem(OWNER_WA_KEY) || (DB.settings && DB.settings.phone) || '8850241377';
+  if(ownerWa === '8850231477' || ownerWa.includes('98765')) ownerWa = '8850241377';
   if(ownerWa){
     const waNum = ownerWa.replace(/\D/g,'');
     const msg = `*NEW QR ORDER – INDUS WOK*%0A`+
@@ -4453,51 +4612,137 @@ function renderQrInbox(){
 }
 window.renderQrInbox = renderQrInbox;
 
+function isTableQrOrder(o){
+  if(!o) return false;
+  const src=String(o.source||o.src||'').toLowerCase();
+  const typ=String(o.orderType||'').toLowerCase();
+  const dp=String(o.deliveryPartner||'').toLowerCase();
+  return !!(o.tableId || o.tableNo || src.includes('qr_table') || src.includes('qr_dinein') || typ==='dinein' || dp.includes('dine-in'));
+}
+function findTableForQr(o){
+  if(typeof DB==='undefined' || !DB.tables) return null;
+  const tid=String(o.tableId||o.tid||'').trim();
+  if(tid){ const t=DB.tables.find(x=>String(x.id)===tid); if(t) return t; }
+  const no=String(o.tableNo||o.no||'').trim();
+  const area=String(o.tableArea||o.area||'').trim().toLowerCase();
+  if(no){
+    let t=DB.tables.find(x=>String(x.no)===no && (!area || String(x.area||'').toLowerCase()===area));
+    if(t) return t;
+    t=DB.tables.find(x=>String(x.no)===no); if(t) return t;
+  }
+  const label=String(o.table||'').trim().toLowerCase();
+  if(label){
+    return DB.tables.find(t=>{
+      const opts=[t.id, t.name, tableDisplay(t), 'table '+t.no, String(t.no), (t.area?('table '+t.no+' · '+t.area):''), (t.area?('table '+t.no+' - '+t.area):'')].filter(Boolean).map(x=>String(x).trim().toLowerCase());
+      return opts.includes(label);
+    }) || null;
+  }
+  return null;
+}
+function removeQrFromCart(o){
+  if(typeof DB==='undefined' || !DB.carts) return;
+  const token=String((o&& (o._fid||o.id)) || o || '');
+  const t=(typeof o==='object')?findTableForQr(o):null;
+  let keys=[];
+  if(t) keys.push(t.id);
+  keys.push(token.startsWith('QR_')?token:('QR_'+token));
+  if(!t){
+    Object.keys(DB.carts||{}).forEach(k=>{
+      const c=DB.carts[k];
+      if((c.qrOrderIds||[]).map(String).includes(token) || (c.items||[]).some(i=>String(i.sourceQrId||'')===token)) keys.push(k);
+    });
+  }
+  keys=[...new Set(keys)];
+  keys.forEach(key=>{
+    const c=DB.carts[key]; if(!c) return;
+    if(Array.isArray(c.items)) c.items=c.items.filter(i=>String(i.sourceQrId||'')!==token);
+    if(Array.isArray(c.qrOrderIds)) c.qrOrderIds=c.qrOrderIds.filter(x=>String(x)!==token);
+    if(!c.items.length && !hasKotSent(c)) delete DB.carts[key];
+    else c.mtime=Date.now();
+  });
+  if(DB.kots) DB.kots=DB.kots.filter(k=>String(k.sourceQrId||'')!==token && k.id!=='KOT_QR_'+token);
+  save();
+  try{ if(typeof pushNow==='function') setTimeout(pushNow,20); }catch(e){}
+}
 function syncQrToCartAndKot(o){
   if(typeof DB === 'undefined' || !DB.carts) return;
-  const idVal = String(o._fid || o.id || 'QR');
-  const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
+  const token = String(o._fid || o.id || ('QR'+Date.now()));
+  const table = findTableForQr(o);
+  const tableOrder = !!table || isTableQrOrder(o);
+  const key = table ? table.id : (token.startsWith('QR_') ? token : ('QR_' + token));
+  const already = DB.carts[key] && Array.isArray(DB.carts[key].qrOrderIds) && DB.carts[key].qrOrderIds.includes(token);
   const items = (o.items || []).map(i => ({
     id: i.id || uid('m'),
     name: i.name || 'Item',
     size: i.size || 'full',
     price: +i.price || 0,
     qty: +i.qty || 1,
-    cat: i.cat || 'QR Order',
+    cat: i.cat || (tableOrder?'Table QR':'QR Order'),
     sub: i.sub || '',
     mods: i.mods || [],
-    note: i.note || ''
+    note: i.note || '',
+    sourceQrId: token
   }));
-  DB.carts[key] = {
-    key: key,
-    items: items,
-    disc: { type: 'p', val: 0 },
-    phone: o.customerPhone || o.phone || '',
-    cust: o.customerName || o.name || 'Customer',
-    addr: (o.customerAddress || o.address || '') + (o.deliveryNote ? ' ('+o.deliveryNote+')' : ''),
-    mtime: Date.now(),
-    tableNo: 'QR',
-    tableArea: o.deliveryPartner || 'Online',
-    kotSent: {}
-  };
-  if(DB.kots && !DB.kots.find(k => k.id === 'KOT_' + key)){
+  if(!DB.carts[key]){
+    DB.carts[key] = {
+      key,
+      items: [],
+      disc: { type: 'p', val: 0 },
+      phone: o.customerPhone || o.phone || '',
+      cust: o.customerName || o.name || 'Customer',
+      addr: tableOrder ? (o.note||'') : ((o.customerAddress || o.address || '') + (o.deliveryNote ? ' ('+o.deliveryNote+')' : '')),
+      mtime: Date.now(),
+      tableNo: table ? table.no : (tableOrder ? (o.tableNo || o.table || 'QR') : 'QR'),
+      tableArea: table ? table.area : (tableOrder ? (o.tableArea || 'Dine-in QR') : (o.deliveryPartner || 'Online')),
+      kotSent: {},
+      qrOrderIds: []
+    };
+  }
+  const c=DB.carts[key]; normalizeCartObj(c);
+  if(c.qrOrderIds===undefined) c.qrOrderIds=[];
+  if(!Array.isArray(c.qrOrderIds)) c.qrOrderIds=[];
+  if(!already){
+    c.items = (c.items||[]).concat(items);
+    c.qrOrderIds.push(token);
+  }
+  c.phone = c.phone || o.customerPhone || o.phone || '';
+  c.cust = c.cust || o.customerName || o.name || 'Customer';
+  if(table){ c.tableNo=table.no; c.tableArea=table.area; }
+  c.mtime = Date.now();
+  const kotId='KOT_QR_'+token;
+  if(DB.kots && !DB.kots.find(k => k.id === kotId)){
+    const tableName = table ? tableDisplay(table) : ('QR: ' + (o.customerName || o.name || 'Customer'));
     DB.kots.push({
-      id: 'KOT_' + key,
+      id: kotId,
+      sourceQrId: token,
       time: nowTime(),
       ts: Date.now(),
-      table: 'QR: ' + (o.customerName || o.name || 'Customer'),
-      type: 'QR - ' + (o.deliveryPartner || 'Takeaway'),
+      table: tableName,
+      type: tableOrder ? 'Table QR' : ('QR - ' + (o.deliveryPartner || 'Takeaway')),
       items: items.map(i => ({ name: i.name, size: i.size, qty: i.qty, sub: i.sub, mods: i.mods||[], note: i.note||'' })),
       status: 'new',
       by: 'Customer QR'
     });
   }
   save();
+  try{ if(typeof pushNow==='function') setTimeout(pushNow,20); }catch(e){}
   if(typeof renderPrintStation === 'function') renderPrintStation();
   if(typeof renderKDS === 'function') renderKDS();
   if(typeof renderTables === 'function') renderTables();
 }
-
+async function qrAutoAccept(o){
+  if(!o || !isTableQrOrder(o)) return;
+  if(o.status && o.status!=='new') return;
+  o.status='accepted'; o.updatedAt=new Date().toISOString(); o.autoSyncedToTable=true;
+  persistQr(); renderQrInbox();
+  try{
+    const db=firebase.firestore();
+    await db.collection(QR_COLLECTION).doc(o._fid||o.id).set({status:'accepted', updatedAt: firebase.firestore.FieldValue.serverTimestamp(), autoSyncedToTable:true}, {merge:true});
+  }catch(e){}
+}
+window.syncQrToCartAndKot=syncQrToCartAndKot;
+window.findTableForQr=findTableForQr;
+window.isTableQrOrder=isTableQrOrder;
 // ---- ACTIONS ----
 window.qrUpdateStatus = async function(fid, status){
   const o = qrOrders.find(x=>(x._fid||x.id)===fid);
@@ -4512,13 +4757,9 @@ window.qrUpdateStatus = async function(fid, status){
   if(status === 'accepted' || status === 'preparing' || status === 'ready'){
     syncQrToCartAndKot(o);
   } else if(status === 'rejected'){
-    const idVal = String(o._fid || o.id || 'QR');
-    const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
-    if(typeof DB !== 'undefined' && DB.carts && DB.carts[key]){
-      delete DB.carts[key];
-      save();
-      if(typeof renderPrintStation === 'function') renderPrintStation();
-    }
+    if(typeof removeQrFromCart==='function') removeQrFromCart(o);
+    if(typeof renderPrintStation === 'function') renderPrintStation();
+    if(typeof renderTables === 'function') renderTables();
   }
 };
 
@@ -4526,13 +4767,9 @@ window.qrDelete = async function(fid){
   if(!confirm('Developer: Permanently delete this QR order?')) return;
   qrOrders = qrOrders.filter(x=>(x._fid||x.id)!==fid);
   persistQr(); renderQrInbox(); toast('QR order deleted');
-  const idVal = String(fid);
-  const key = idVal.startsWith('QR_') ? idVal : ('QR_' + idVal);
-  if(typeof DB !== 'undefined' && DB.carts && DB.carts[key]){
-    delete DB.carts[key];
-    save();
-    if(typeof renderPrintStation === 'function') renderPrintStation();
-  }
+  if(typeof removeQrFromCart==='function') removeQrFromCart({id:fid,_fid:fid});
+  if(typeof renderPrintStation === 'function') renderPrintStation();
+  if(typeof renderTables === 'function') renderTables();
   try{
     const db = firebase.firestore();
     await db.collection(QR_COLLECTION).doc(fid).delete();
@@ -4606,9 +4843,13 @@ window.qrWhatsApp = function(fid){
 // ---- QR CODE GENERATOR ----
 window.generateCustomerQr = function(){
   const sel = document.getElementById('qrTableSelect');
-  const label = (document.getElementById('qrCustomLabel')||{}).value || (sel && sel.value) || 'main';
+  const custom = (document.getElementById('qrCustomLabel')||{}).value;
+  const chosen = (sel && sel.value) || 'main';
+  const t = (!custom && typeof DB!=='undefined' && DB.tables) ? DB.tables.find(x=>x.id===chosen) : null;
+  const label = custom || (t ? tableDisplay(t) : chosen);
   const base = location.origin + location.pathname.replace(/index\.html?$/,'').replace(/\/$/, '/');
-  const url = base + 'customer-order.html?table=' + encodeURIComponent(label) + '&r=' + Date.now().toString(36);
+  const extra = t ? ('&tid='+encodeURIComponent(t.id)+'&no='+encodeURIComponent(t.no||'')+'&area='+encodeURIComponent(t.area||'')+'&src=qr_table') : '&src=qr_customer';
+  const url = base + 'customer-order.html?table=' + encodeURIComponent(label) + extra + '&r=' + Date.now().toString(36);
   const out = document.getElementById('qrOutput');
   const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}&qzone=1`;
   if(out) out.innerHTML = `
@@ -4644,11 +4885,13 @@ function qrInitUI(){
   const sel = document.getElementById('qrTableSelect');
   if(sel && typeof DB!=='undefined' && DB.tables){
     sel.innerHTML = '<option value="takeaway">🛍️ Takeaway Counter</option>' +
-      DB.tables.map(t=>`<option value="${t.name||t.id}">${t.name||t.id}</option>`).join('') +
+      DB.tables.map(t=>`<option value="${t.id}" data-no="${t.no||''}" data-area="${escHTML(t.area||'')}">${escHTML(tableDisplay(t))}</option>`).join('') +
       '<option value="delivery">🚚 Delivery QR</option><option value="main">🏪 Main Entrance</option>';
   }
   const waEl = document.getElementById('qrOwnerWa');
-  if(waEl) waEl.value = localStorage.getItem(OWNER_WA_KEY) || (typeof DB!=='undefined' && DB.settings ? DB.settings.phone : '') || '8850231477';
+  let savedWa = localStorage.getItem(OWNER_WA_KEY) || (typeof DB!=='undefined' && DB.settings ? DB.settings.phone : '') || '8850241377';
+  if(savedWa === '8850231477' || savedWa.includes('98765')) { savedWa = '8850241377'; try{ localStorage.setItem(OWNER_WA_KEY, savedWa); }catch(e){} }
+  if(waEl) waEl.value = savedWa;
   const addrEl = document.getElementById('qrPickupAddr');
   if(addrEl) addrEl.value = localStorage.getItem(PICKUP_ADDR_KEY) || (typeof DB!=='undefined' && DB.settings ? ((DB.settings.addr1||'')+' '+(DB.settings.addr2||'')).trim() : '') || 'Indus Wok, Mumbai';
   const urlInput = document.getElementById('qrOrderUrl');
