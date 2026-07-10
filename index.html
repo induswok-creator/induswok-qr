@@ -108,6 +108,7 @@
   .table-cell.reserved{border-color:#d8caf2;background:#f8f5ff}
   .table-cell.reserved .ts{color:var(--res)}
   .table-cell .amt{font-size:12px;font-weight:700;color:var(--red);margin-top:4px}
+.table-cell .newqr{display:inline-block;margin-top:5px;background:#dc2626;color:#fff;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:900;animation:flashpulse 1.1s ease-in-out infinite}
 .manage-table-row{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:10px;margin:6px 0;background:#fff}
 .manage-table-row b{min-width:95px}.manage-table-row small{color:var(--muted);flex:1}
   .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:12px}
@@ -428,6 +429,7 @@
           <div class="row" style="margin-top:6px">
             <button class="btn-ghost grow" onclick="printKOT()">🍳 KOT</button>
             <button class="btn-ghost grow" onclick="printBill(false)">🧾 Print Bill</button>
+            <button class="btn-ghost grow" onclick="whatsAppCurrentBill()">💬 WA Bill/Pay</button>
           </div>
           <div class="row" style="margin-top:6px">
             <button class="btn-ghost grow" onclick="clearCart()">🗑️ Clear</button>
@@ -1773,6 +1775,7 @@ function renderPrintStation(){
           <div class="row" style="gap:6px;">
             <button class="btn-ghost" style="padding:4px 8px; font-size:11px;" onclick="printStationKOT('${c.key}')">🍳 KOT</button>
             <button class="btn-primary" style="padding:4px 8px; font-size:11px;" onclick="printStationBill('${c.key}')">🧾 Bill</button>
+            <button class="btn-ghost" style="padding:4px 8px; font-size:11px;" onclick="whatsAppCartBill('${c.key}')">💬 WA Pay</button>
             <button class="btn-warn" style="padding:4px 8px; font-size:11px;" onclick="printStationSettle('${c.key}')">✅ Settle</button>
           </div>
         </div>
@@ -1812,7 +1815,7 @@ function renderPrintStation(){
         </div>
         <div class="row" style="align-items:center; justify-content:space-between; margin-top:4px;">
           <span style="font-size:14px; font-weight:700;">Total: ${money(b.total)}</span>
-          <button class="btn-primary" style="padding:4px 8px; font-size:11px;" onclick="reprint('${b.no}')">🖨️ Reprint</button>
+          <div class="row" style="gap:6px"><button class="btn-primary" style="padding:4px 8px; font-size:11px;" onclick="reprint('${b.no}')">🖨️ Reprint</button><button class="btn-ghost" style="padding:4px 8px; font-size:11px;" onclick="whatsAppBillNo('${b.no}')">💬 WA</button></div>
         </div>
       `;
       billsDiv.appendChild(card);
@@ -1934,7 +1937,8 @@ function renderTables(){
     const cart=DB.carts[t.id];if(cart)normalizeCartObj(cart);const amt=cart?cartTotal(cart).total:0;
     const status=cart&&((cart.items&&cart.items.length)||hasKotSent(cart))?'occupied':t.status;
     const c=document.createElement('div');c.className='table-cell '+status;c.setAttribute('data-tablekey',t.id);
-    c.innerHTML=`<div class="tn">${t.no}</div><div class="ts">${status.toUpperCase()}</div>${amt?`<div class="amt">${money(amt)}</div>`:'<div class="ta">tap to bill</div>'}`;
+    const hasNewQr = cart && (cart.qrOrderIds||[]).length && (Date.now()-(cart.mtime||0) < 10*60000);
+    c.innerHTML=`<div class="tn">${t.no}</div><div class="ts">${hasNewQr?'🆕 NEW TABLE ORDER':status.toUpperCase()}</div>${amt?`<div class="amt">${money(amt)}</div>`:'<div class="ta">tap to bill</div>'}${hasNewQr?'<div class="newqr">NEW</div>':''}`;
     c.onclick=()=>openTable(t);
     c.oncontextmenu=e=>{e.preventDefault();cycleTableStatus(t);};
     g.appendChild(c);
@@ -2605,6 +2609,55 @@ function makeBillObj(no){
     items:JSON.parse(JSON.stringify(cart.items)),totals:cartTotal(cart),total:cartTotal(cart).total,
     mode:$('#payMode').value,phone:$('#custPhone').value,cust:$('#custName').value,addr:$('#custAddr').value,by:CUR.name};
 }
+function upiPayLink(amount, note){
+  const upi=(DB.settings&&DB.settings.upi)||'Q496128216@ybl';
+  const name=(DB.settings&&DB.settings.name)||'Indus Wok';
+  return `upi://pay?pa=${encodeURIComponent(upi)}&pn=${encodeURIComponent(name)}&am=${encodeURIComponent(Math.round(+amount||0))}&cu=INR&tn=${encodeURIComponent(note||'Indus Wok Bill')}`;
+}
+function billWhatsAppText(b){
+  const lines=[];
+  lines.push(`*${(DB.settings&&DB.settings.name)||'Indus Wok'}*`);
+  lines.push(`Bill: ${b.no||'Estimate'}${b.table?' • '+b.table:''}`);
+  if(b.cust) lines.push(`Customer: ${b.cust}`);
+  lines.push('');
+  (b.items||[]).forEach(i=>{ lines.push(`${i.qty||1} x ${i.name||'Item'}${i.size==='half'?' (Half)':''} = ₹${(+i.price||0)*(+i.qty||1)}`); });
+  lines.push('');
+  if(b.totals){
+    lines.push(`Subtotal: ₹${Math.round(b.totals.sub||0)}`);
+    if(b.totals.disc) lines.push(`Discount: -₹${Math.round(b.totals.disc)}`);
+    if(b.totals.gstOn) lines.push(`GST: ₹${Math.round((b.totals.cgst||0)+(b.totals.sgst||0))}`);
+  }
+  lines.push(`*Total Payable: ₹${Math.round(b.total||0)}*`);
+  const pay=upiPayLink(b.total, 'Bill '+(b.no||'Estimate'));
+  lines.push('');
+  lines.push('Pay with any UPI app from mobile:');
+  lines.push(pay);
+  lines.push('');
+  lines.push('UPI ID: '+((DB.settings&&DB.settings.upi)||'Q496128216@ybl'));
+  lines.push((DB.settings&&DB.settings.thanks)||'Thank you!');
+  return lines.join('\n');
+}
+function openWhatsAppTo(phone, text){
+  let ph=String(phone||'').replace(/\D/g,'');
+  if(!ph){ ph=prompt('Customer WhatsApp number?','')||''; ph=ph.replace(/\D/g,''); }
+  if(!ph){ toast('WhatsApp number required','warning'); return; }
+  if(ph.length===10) ph='91'+ph;
+  window.open(`https://wa.me/${ph}?text=${encodeURIComponent(text)}`,'_blank');
+}
+function whatsAppBillObj(b, phone){ openWhatsAppTo(phone||b.phone, billWhatsAppText(b)); }
+function whatsAppCurrentBill(){
+  if(!cart||!cart.items||!cart.items.length){toast('Cart empty');return;}
+  try{ const b=makeBillObj('EST'+Date.now().toString().slice(-6)); whatsAppBillObj(b, $('#custPhone').value||cart.phone); }catch(e){toast(e.message,'error');}
+}
+function whatsAppCartBill(key){
+  const c=DB.carts&&DB.carts[key]; if(!c||!c.items||!c.items.length){toast('Cart empty');return;}
+  const t=DB.tables.find(x=>x.id===key); const isQR=/^QR_/.test(key), isTake=/^TA_/.test(key), isDel=/^DL_/.test(key);
+  const b={no:'EST'+Date.now().toString().slice(-6),date:todayStr(),time:nowTime(),type:t?'Dine-in':(isQR?'QR Order':(isTake?'Takeaway':(isDel?'Delivery':'Dine-in'))),table:t?('Table '+t.no):tableNoFor(key),items:JSON.parse(JSON.stringify(c.items)),totals:cartTotal(c),total:cartTotal(c).total,mode:'UPI',phone:c.phone||'',cust:c.cust||'',addr:c.addr||'',by:CUR.name};
+  whatsAppBillObj(b,c.phone);
+}
+function whatsAppBillNo(no){ const b=(DB.bills||[]).find(x=>String(x.no)===String(no)); if(!b){toast('Bill not found','warning');return;} whatsAppBillObj(b,b.phone); }
+window.whatsAppCurrentBill=whatsAppCurrentBill;window.whatsAppCartBill=whatsAppCartBill;window.whatsAppBillNo=whatsAppBillNo;
+
 function printBill(settled){
   if(!cart.items.length){toast('Cart empty');return;}
   const b=makeBillObj();
@@ -4390,7 +4443,7 @@ async function boot(){
 boot();
 </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1186a6ebee9447e',t:'MTc4MjQzNzEwMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1662858e9793b46',t:'MTc4MzI1MjI4NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a19027b95971d896',t:'MTc4MzY5MjY2MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
 <script>
 // ===== INDUS WOK – QR ORDERS MODULE v2.3 =====
@@ -4523,9 +4576,10 @@ function onNewQrOrder(o){
   const cust = o.customerName || o.name || 'Customer';
   const total = o.total || 0;
   const items = (o.items||[]).map(i=>i.name+(i.qty>1?` x${i.qty}`:'')).join(', ').slice(0,80);
-  const tableTxt = (typeof isTableQrOrder==='function' && isTableQrOrder(o)) ? (' • '+(o.table || (findTableForQr(o)?tableDisplay(findTableForQr(o)):'Table QR'))) : '';
-  pushNotify('📱 NEW QR ORDER — '+cust+tableTxt, `₹${total} • ${items}`);
-  if(typeof speakAnnouncement==='function') speakAnnouncement((tableTxt?'New table QR order received ':'New online order received ') + 'from ' + cust + ' for rupees ' + total + '!');
+  const isTable = (typeof isTableQrOrder==='function' && isTableQrOrder(o));
+  const tableName = isTable ? (o.table || (findTableForQr(o)?tableDisplay(findTableForQr(o)):'Table QR')) : '';
+  pushNotify(isTable ? ('🪑 NEW TABLE ORDER — '+tableName) : ('📱 NEW QR ORDER — '+cust), `₹${total} • ${cust} • ${items}`);
+  if(typeof speakAnnouncement==='function') speakAnnouncement((isTable?('New table order for '+tableName+' received '):'New online order received ') + 'from ' + cust + ' for rupees ' + total + '!');
   // WhatsApp to owner
   let ownerWa = localStorage.getItem(OWNER_WA_KEY) || (DB.settings && DB.settings.phone) || '8850241377';
   if(ownerWa === '8850231477' || ownerWa.includes('98765')) ownerWa = '8850241377';
