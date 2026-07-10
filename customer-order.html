@@ -88,6 +88,8 @@ a.btnlink{display:block;text-align:center;margin-top:8px;padding:12px;border-rad
     </div>
   </div>
 
+  <div id="tablePrevOrder" class="card" style="display:none;border-color:#bfe6cd;background:#f7fff9"></div>
+
   <input id="q" class="search" placeholder="🔍 Search Hakka Noodles, Manchurian…">
   <div class="cats" id="cats"></div>
   <div class="grid" id="menu"></div>
@@ -249,7 +251,7 @@ async function loadLiveMenu(){
           try{
             const j = JSON.parse(raw);
             if(j.menu && j.menu.length>3){
-              MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', price: m.full||m.price||199, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
+              MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
               document.getElementById('liveBadge').textContent='● LIVE MENU';
               document.getElementById('liveBadge').style.background='#e8fff1';
               document.getElementById('liveBadge').style.color='#138a4a';
@@ -265,7 +267,7 @@ async function loadLiveMenu(){
       if(raw){
         const j = JSON.parse(raw);
         if(j.menu && j.menu.length>3){
-          MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', price: m.full||m.price||199, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
+          MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
           document.getElementById('liveBadge').textContent='● LIVE MENU';
           document.getElementById('liveBadge').style.background='#e8fff1';
           document.getElementById('liveBadge').style.color='#138a4a';
@@ -318,15 +320,34 @@ function renderMenu(){
       <div class="n"><span class="vdot ${m.veg}"></span>${m.name} ${m.outOfStock ? '<span style="color:#d93025;font-size:11px;font-weight:bold;padding:2px 6px;background:#fce8e6;border-radius:4px;margin-left:6px">🚫 SOLD OUT</span>' : ''}</div>
       <div class="d">${m.cat}</div>
       <div class="p">₹${m.price}</div>
-      ${m.outOfStock ? '<button class="add" style="background:#ccc;cursor:not-allowed;color:#666" disabled>Sold Out</button>' : `<div style="display:flex;gap:4px"><button class="add" style="padding:6px 10px;font-size:13px" onclick='openModSheet("${m.id}")'>⚙️ Options</button><button class="add" onclick='addToCart("${m.id}")'>+ Add</button></div>`}
+      ${m.outOfStock ? '<button class="add" style="background:#ccc;cursor:not-allowed;color:#666" disabled>Sold Out</button>' : itemButtonsHTML(m)}
     </div>`).join('');
 }
+function canHalf(m){
+  const txt=((m.cat||'')+' '+(m.sub||'')+' '+(m.name||'')).toLowerCase();
+  if(!(+m.half>0)) return false;
+  if(/soup|starter|starters|appetizer|dry|gravy|combo|meal/.test(txt)) return false;
+  return /rice|noodle|noodles/.test(txt);
+}
+function itemButtonsHTML(m){
+  if(canHalf(m)){
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:auto">
+      <button class="add" style="font-size:12px;padding:7px" onclick='addToCart("${m.id}","full")'>Full ₹${m.price}</button>
+      <button class="add" style="font-size:12px;padding:7px;background:#7e0c1a" onclick='addToCart("${m.id}","half")'>Half ₹${m.half}</button>
+      <button class="add" style="grid-column:1/-1;padding:6px 10px;font-size:13px;background:#c79a3a" onclick='openModSheet("${m.id}","full")'>⚙️ Full Options</button>
+      <button class="add" style="grid-column:1/-1;padding:6px 10px;font-size:13px;background:#8b6a28" onclick='openModSheet("${m.id}","half")'>⚙️ Half Options</button>
+    </div>`;
+  }
+  return `<div style="display:flex;gap:4px"><button class="add" style="padding:6px 10px;font-size:13px" onclick='openModSheet("${m.id}","full")'>⚙️ Options</button><button class="add" onclick='addToCart("${m.id}","full")'>+ Add</button></div>`;
+}
 let pendingModItem = null;
-function openModSheet(id){
+let pendingModSize = "full";
+function openModSheet(id,size){
   const m = MENU.find(x=>x.id===id); if(!m) return;
   if(m.outOfStock){ alert('Sorry, this item is currently sold out!'); return; }
-  pendingModItem = m;
-  document.getElementById('modItemTitle').textContent = m.name + ' (₹' + m.price + ')';
+  pendingModItem = m; pendingModSize = (size==='half' && canHalf(m)) ? 'half' : 'full';
+  const shownPrice = pendingModSize==='half' ? m.half : m.price;
+  document.getElementById('modItemTitle').textContent = m.name + (pendingModSize==='half'?' (Half)':' (Full)') + ' (₹' + shownPrice + ')';
   document.getElementById('modSpice').value = 'Normal 🌶️';
   document.querySelectorAll('.mod-addon').forEach(cb => cb.checked = false);
   document.getElementById('modNote').value = '';
@@ -348,22 +369,25 @@ function confirmAddMod(){
   if(spice && spice !== 'Normal 🌶️') modsList.push(spice);
   if(addons.length) modsList = modsList.concat(addons);
   
-  const finalPrice = m.price + addonPrice;
-  const modKey = modsList.join('|') + '::' + note;
+  const basePrice = pendingModSize==='half' ? m.half : m.price;
+  const finalPrice = basePrice + addonPrice;
+  const modKey = pendingModSize + '::' + modsList.join('|') + '::' + note;
   const f = cart.find(c => c.id === m.id && (c.modKey||'') === modKey);
   if(f) {
     f.qty++;
   } else {
-    cart.push({ id: m.id, name: m.name + (addons.length ? ' (+'+addons.join(', ')+')' : ''), price: finalPrice, qty: 1, mods: modsList, note: note, modKey: modKey });
+    cart.push({ id: m.id, name: m.name + (pendingModSize==='half' ? ' (Half)' : '') + (addons.length ? ' (+'+addons.join(', ')+')' : ''), price: finalPrice, qty: 1, size: pendingModSize, mods: modsList, note: note, modKey: modKey });
   }
   closeModSheet();
   updateCartBar();
   navigator.vibrate && navigator.vibrate(12);
 }
-function addToCart(id){
+function addToCart(id,size){
   const m = MENU.find(x=>x.id===id); if(!m || m.outOfStock) return;
-  const f = cart.find(c=>c.id===id && !c.modKey);
-  if(f) f.qty++; else cart.push({id:m.id,name:m.name,price:m.price,qty:1,mods:[],note:''});
+  const sz = (size==='half' && canHalf(m)) ? 'half' : 'full';
+  const price = sz==='half' ? m.half : m.price;
+  const f = cart.find(c=>c.id===id && !c.modKey && (c.size||'full')===sz);
+  if(f) f.qty++; else cart.push({id:m.id,name:m.name+(sz==='half'?' (Half)':''),price:price,qty:1,size:sz,mods:[],note:''});
   updateCartBar();
   navigator.vibrate && navigator.vibrate(12);
 }
@@ -416,6 +440,34 @@ bindPartnerClicks();
 setupOrderMode();
 bindPartnerClicks();
 
+
+function renderTablePrevOrder(c){
+  const box=document.getElementById('tablePrevOrder'); if(!box) return;
+  if(!isTableQr || !c || !Array.isArray(c.items) || !c.items.length){ box.style.display='none'; return; }
+  const sub=c.items.reduce((a,i)=>a+(+i.price||0)*(+i.qty||1),0);
+  box.style.display='block';
+  box.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--green)">🧾 Current table order</b><span class="pill" style="background:#e8fff1;color:#138a4a">₹${Math.round(sub)}</span></div>
+    <div class="muted" style="margin-top:4px">These items are already added for this table. Add more items below if needed.</div>
+    <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:6px">${c.items.map(i=>`<div style="font-size:13px;margin:3px 0"><b>${i.qty||1}× ${i.name||'Item'}</b> <span class="muted">₹${i.price||0}</span>${(i.mods&&i.mods.length)?`<br><span class="muted">${i.mods.join(', ')}</span>`:''}</div>`).join('')}</div>`;
+}
+function startTableCartWatcher(){
+  if(!isTableQr) return;
+  try{
+    fdb.doc('pos/induswok-default').onSnapshot(doc=>{
+      if(!doc || !doc.exists) return;
+      const raw=(doc.data()||{}).data; if(!raw) return;
+      let j=null; try{j=JSON.parse(raw);}catch(e){return;}
+      const carts=j.carts||{}; let c=null;
+      if(tableIdParam && carts[tableIdParam]) c=carts[tableIdParam];
+      if(!c && tableNoParam){
+        Object.keys(carts).some(k=>{const x=carts[k]; if(String(x.tableNo||'')===String(tableNoParam) && (!tableAreaParam || String(x.tableArea||'')===String(tableAreaParam))){c=x; return true;} return false;});
+      }
+      renderTablePrevOrder(c);
+    });
+  }catch(e){console.log('table cart watcher',e.message);}
+}
+startTableCartWatcher();
+
 // ---------- PLACE ORDER ----------
 async function placeOrder(){
   const name = document.getElementById('cName').value.trim();
@@ -438,7 +490,7 @@ async function placeOrder(){
     tableNo: tableNoParam,
     tableArea: tableAreaParam,
     orderType: isTableQr ? 'dinein' : 'online',
-    items: cart.map(c=>({id:c.id||'', name:c.name, qty:c.qty, price:c.price, mods:c.mods||[], note:c.note||''})),
+    items: cart.map(c=>({id:c.id||'', name:c.name, qty:c.qty, price:c.price, size:c.size||'full', mods:c.mods||[], note:c.note||''})),
     subtotal: sub, gst, total,
     deliveryPartner: isTableQr ? 'Dine-in Table' : document.getElementById('deliveryPartner').value,
     status: 'new',
