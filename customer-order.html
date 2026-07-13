@@ -89,6 +89,15 @@ a.btnlink{display:block;text-align:center;margin-top:8px;padding:12px;border-rad
   </div>
 
   <div id="tablePrevOrder" class="card" style="display:none;border-color:#bfe6cd;background:#f7fff9"></div>
+  <div id="tableServiceBox" class="card" style="display:none">
+    <b>Need help at your table?</b>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px">
+      <button class="add" style="background:#7a52d1" onclick="sendTableRequest('waiter')">🛎️ Waiter</button>
+      <button class="add" style="background:#138a4a" onclick="sendTableRequest('water')">💧 Water</button>
+      <button class="add" style="background:#c79a3a" onclick="sendTableRequest('bill')">🧾 Bill</button>
+    </div>
+    <div id="tablePayBox" style="display:none;margin-top:10px"></div>
+  </div>
 
   <input id="q" class="search" placeholder="🔍 Search Hakka Noodles, Manchurian…">
   <div class="cats" id="cats"></div>
@@ -195,7 +204,8 @@ a.btnlink{display:block;text-align:center;margin-top:8px;padding:12px;border-rad
       <div id="doneId" style="font-weight:800;color:var(--red)"></div>
       <p class="muted" id="doneMsg">Kitchen is notified. You’ll get a WhatsApp confirmation.</p>
       <div id="upiInstantPayContainer" style="margin-top:12px"></div>
-      <div class="card" style="text-align:left;margin-top:12px">
+      <div id="orderActionBox" style="margin-top:8px"></div>
+      <div id="riderCard" class="card" style="text-align:left;margin-top:12px">
         <b>Next steps – book your rider:</b>
         <div id="riderLinks" style="margin-top:8px;display:grid;gap:8px"></div>
       </div>
@@ -251,7 +261,7 @@ async function loadLiveMenu(){
           try{
             const j = JSON.parse(raw);
             if(j.menu && j.menu.length>3){
-              MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
+              MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock, qrHalf: (m.qrHalf===undefined?undefined:!!m.qrHalf)}));
               document.getElementById('liveBadge').textContent='● LIVE MENU';
               document.getElementById('liveBadge').style.background='#e8fff1';
               document.getElementById('liveBadge').style.color='#138a4a';
@@ -267,7 +277,7 @@ async function loadLiveMenu(){
       if(raw){
         const j = JSON.parse(raw);
         if(j.menu && j.menu.length>3){
-          MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock}));
+          MENU = j.menu.map(m=>({id:m.id, name:m.name, cat:m.cat||'Other', sub:m.sub||'', price: m.full||m.price||199, half:+m.half||0, veg: (m.veg||'veg').includes('non')?'nonveg':'veg', outOfStock: !!m.outOfStock, qrHalf: (m.qrHalf===undefined?undefined:!!m.qrHalf)}));
           document.getElementById('liveBadge').textContent='● LIVE MENU';
           document.getElementById('liveBadge').style.background='#e8fff1';
           document.getElementById('liveBadge').style.color='#138a4a';
@@ -302,6 +312,7 @@ function setupOrderMode(){
   set('partnerHint','No delivery address needed. Your order goes directly to this table in POS, kitchen and print station.');
   const dp=document.getElementById('deliveryPartner'); if(dp) dp.value='Dine-in Table';
   const partners=document.getElementById('partners'); if(partners) partners.innerHTML='<div class="partner on" data-p="Dine-in Table" style="grid-column:1/-1"><b>🪑 Serve at '+label+'</b><small>Synced live to restaurant POS</small></div>';
+  const svc=document.getElementById('tableServiceBox'); if(svc) svc.style.display='block';
 }
 
 function buildCats(){
@@ -326,6 +337,8 @@ function renderMenu(){
 function canHalf(m){
   const txt=((m.cat||'')+' '+(m.sub||'')+' '+(m.name||'')).toLowerCase();
   if(!(+m.half>0)) return false;
+  if(m.qrHalf===true) return true;
+  if(m.qrHalf===false) return false;
   if(/soup|starter|starters|appetizer|dry|gravy|combo|meal/.test(txt)) return false;
   return /rice|noodle|noodles/.test(txt);
 }
@@ -446,10 +459,24 @@ function renderTablePrevOrder(c){
   if(!isTableQr || !c || !Array.isArray(c.items) || !c.items.length){ box.style.display='none'; return; }
   const sub=c.items.reduce((a,i)=>a+(+i.price||0)*(+i.qty||1),0);
   box.style.display='block';
-  box.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--green)">🧾 Current table order</b><span class="pill" style="background:#e8fff1;color:#138a4a">₹${Math.round(sub)}</span></div>
-    <div class="muted" style="margin-top:4px">These items are already added for this table. Add more items below if needed.</div>
-    <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:6px">${c.items.map(i=>`<div style="font-size:13px;margin:3px 0"><b>${i.qty||1}× ${i.name||'Item'}</b> <span class="muted">₹${i.price||0}</span>${(i.mods&&i.mods.length)?`<br><span class="muted">${i.mods.join(', ')}</span>`:''}</div>`).join('')}</div>`;
+  box.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--green)">🧾 Already ordered for this table</b><span class="pill" style="background:#e8fff1;color:#138a4a">₹${Math.round(sub)}</span></div>
+    <div class="muted" style="margin-top:4px">This is the previous/current table order. Your new selections below will be added separately.</div>
+    <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:6px">${c.items.map(i=>`<div style="font-size:13px;margin:3px 0"><b>${i.qty||1}× ${i.name||'Item'}</b> <span class="muted">₹${i.price||0}</span>${(i.mods&&i.mods.length)?`<br><span class="muted">${i.mods.join(', ')}</span>`:''}</div>`).join('')}</div>
+    <div style="margin-top:8px;font-weight:800;color:var(--red)">Add more items from menu below ↓</div>`;
+  const pay=document.getElementById('tablePayBox');
+  if(pay){ const upi=`upi://pay?pa=${encodeURIComponent(RESTAURANT.upi)}&pn=${encodeURIComponent(RESTAURANT.name)}&am=${Math.round(sub)}&cu=INR&tn=${encodeURIComponent('Table '+(tableParam||tableNoParam)+' Bill')}`; pay.innerHTML=`<a class="paybtn" style="display:block;text-decoration:none;text-align:center;background:#138a4a;color:#fff" href="${upi}">⚡ Pay current bill ₹${Math.round(sub)} by UPI</a><div class="muted" style="text-align:center;margin-top:4px">Works with GPay / PhonePe / Paytm on mobile</div>`; }
 }
+
+async function sendTableRequest(type){
+  if(!isTableQr){ alert('This works only from table QR'); return; }
+  const label=decodeURIComponent(tableParam || (tableNoParam?('Table '+tableNoParam):'Table'));
+  const req={id:'REQ'+Date.now(), type, table:label, tableId:tableIdParam, tableNo:tableNoParam, tableArea:tableAreaParam, status:'new', resolved:false, source:'table_qr', createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdAtMs:Date.now()};
+  try{ await fdb.collection('induswok_table_requests').doc(req.id).set(req); }catch(e){ console.log(e.message); }
+  if(type==='bill'){ const pay=document.getElementById('tablePayBox'); if(pay) pay.style.display='block'; }
+  alert(type==='bill'?'Bill requested. Staff will come/send bill shortly.':'Request sent to staff ✅');
+}
+window.sendTableRequest=sendTableRequest;
+
 function startTableCartWatcher(){
   if(!isTableQr) return;
   try{
@@ -475,6 +502,9 @@ async function placeOrder(){
   const addr = document.getElementById('cAddr').value.trim();
   if(!name || !phone || (!isTableQr && !addr)){ alert(isTableQr ? 'Please fill Name and Phone' : 'Please fill Name, Phone and Address'); return; }
   if(cart.length===0){ alert('Cart empty'); return; }
+  const dupKey='iw_last_order_'+(tableIdParam||tableParam||'online');
+  const dupPayload=JSON.stringify(cart.map(i=>[i.id,i.qty,i.price,i.size||'full',i.modKey||'']));
+  try{ const last=JSON.parse(localStorage.getItem(dupKey)||'null'); if(last && last.payload===dupPayload && Date.now()-last.ts<60000){ alert('This order was already sent recently. Please wait or add a new item.'); return; } localStorage.setItem(dupKey, JSON.stringify({payload:dupPayload,ts:Date.now()})); }catch(e){}
   const btn = document.getElementById('placeBtn'); btn.disabled=true; btn.textContent='⏳ Sending…';
   const sub = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const gst = Math.round(sub*0.05);
@@ -521,15 +551,24 @@ function startLiveOrderStatus(orderId){
           let stText = '⏳ Received by Kitchen';
           let stColor = '#e08a00';
           if(st === 'accepted' || st === 'preparing'){ stText = '🍳 Cooking in Wok Now'; stColor = '#7a52d1'; }
+          else if(st === 'rejected' || st === 'cancelled'){ stText = '❌ Cancelled'; stColor = '#b91327'; }
           else if(st === 'ready'){ stText = '📦 Ready for Delivery / Pickup!'; stColor = '#1c9c4a'; }
           else if(st === 'delivered'){ stText = '✔️ Completed / Delivered'; stColor = '#444'; }
           else if(st === 'rejected'){ stText = '❌ Order Rejected by Kitchen'; stColor = '#dc2626'; }
           doneIdEl.innerHTML = `Order #${orderId} <span style="display:block;font-size:15px;margin-top:6px;padding:6px 12px;background:${stColor}18;color:${stColor};border-radius:10px;font-weight:800">${stText}</span>`;
+          const act=document.getElementById('orderActionBox'); if(act){ act.innerHTML = st==='new' ? `<button class="paybtn" style="background:#b91327" onclick="cancelMyOrder('${orderId}')">❌ Cancel before kitchen accepts</button>` : ''; }
         }
       }
     });
   }catch(e){}
 }
+
+
+async function cancelMyOrder(orderId){
+  if(!confirm('Cancel this order?')) return;
+  try{ await fdb.collection('induswok_qr_orders').doc(orderId).set({status:'cancelled', updatedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true}); alert('Order cancelled'); }catch(e){ alert('Could not cancel: '+e.message); }
+}
+window.cancelMyOrder=cancelMyOrder;
 
 function showSuccess(o){
   closeCart();
@@ -555,6 +594,7 @@ function showSuccess(o){
     {n:'💬 WhatsApp Restaurant',u:`https://wa.me/91${RESTAURANT.phone.replace(/\D/g,'').slice(-10)}?text=${encodeURIComponent('Hi Indus Wok, my QR order '+o.id+' is placed. Name: '+o.customerName)}`}
   ];
   document.getElementById('riderLinks').innerHTML = links.map(l=>`<a class="btnlink" target="_blank" href="${l.u}">${l.n} →</a>`).join('');
+  if(isTableQr){ const rc=document.getElementById('riderCard'); if(rc) rc.style.display='none'; }
   document.getElementById('doneSheet').classList.add('open');
   // auto whatsapp to restaurant
   setTimeout(()=>{
@@ -567,5 +607,5 @@ function showSuccess(o){
 loadLiveMenu();
 </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a166292e3dfd3b46',t:'MTc4MzI1MjMxOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a166292e3dfd3b46',t:'MTc4MzI1MjMxOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1aa143028144479',t:'MTc4Mzk2NDQ5MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
