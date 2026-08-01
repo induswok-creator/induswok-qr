@@ -294,7 +294,7 @@
   <div class="login-card">
     <div class="logo">🥢</div>
     <div class="brand">Indus Wok</div>
-    <div class="brand-sub">Restaurant POS · v13.3 58mm Fixed Lollipop</div>
+    <div class="brand-sub">Restaurant POS · v13.4 58mm All Bugs Fixed</div>
     <div class="user-select" id="userSelect"></div>
     <div class="pin-dots" id="pinDots"></div>
     <div class="keypad" id="keypad"></div>
@@ -1017,7 +1017,7 @@
             <div id="deviceNamePreview" style="font-size:12px;margin-top:6px;color:var(--muted)"></div>
           </div>
           <div class="card" style="margin-top:14px"><h3>☁️ Live Multi-Device Sync (Firebase)</h3>
-            <p class="muted" style="font-size:12px;margin-top:0">58MM v13.3 — Fixed Lollipop Infinite Add + QR Staff: Both phones can bill randomly — carts merge smartly, bill numbers are now globally unique, table locks warn if same table opened on both. Secondary phones pull latest first — no more overwrites. Set a Device Name above for each phone. Enter your Firebase project config to sync data across ALL devices in real time. Get this from Firebase Console → Project Settings → General → Your apps → Web app.</p>
+            <p class="muted" style="font-size:12px;margin-top:0">58MM v13.4 — All Bugs Fixed: Lollipop + Table Lock + Double Settle + KOT Dup: Both phones can bill randomly — carts merge smartly, bill numbers are now globally unique, table locks warn if same table opened on both. Secondary phones pull latest first — no more overwrites. Set a Device Name above for each phone. Enter your Firebase project config to sync data across ALL devices in real time. Get this from Firebase Console → Project Settings → General → Your apps → Web app.</p>
             <div class="field"><input id="setFirebaseApiKey" placeholder="Firebase API Key (e.g. AIza...)" style="margin-bottom:6px"></div>
             <div class="field"><input id="setFirebaseProjectId" placeholder="Firebase Project ID (e.g. my-pos-1234)" style="margin-bottom:6px"></div>
             <div class="field"><input id="setFirebaseAppId" placeholder="Firebase App ID (optional, e.g. 1:123456:web:abc...)" style="margin-bottom:6px"></div>
@@ -1917,16 +1917,21 @@ function printStationKOT(key) {
   if(!b){toast('No new or cancelled items for KOT');return;}
   
   // Save only the NEW / CANCELLED lot to Kitchen Display System (KDS)
+  // v13.4: KOT idempotent — prevent duplicate KOT if two devices send same cart at same sec
+  const kotHash = (b.items||[]).map(i=> (i.id||i.name).slice(0,6)+':'+i.qty).join('|').slice(0,60);
+  const kotId = 'KOT_'+(curOrder.tableId||cart.key||'TA')+'_'+ kotHash.replace(/[^A-Z0-9]+/gi,'') + '_' + Math.floor(Date.now()/5000);
+  if(DB.kots.find(k=>k.id===kotId)){ toast('KOT already sent'); } else {
   DB.kots.push({
-    id: uid('k'),
+    id: kotId,
     time: nowTime(),
     ts: Date.now(),
     table: label,
     type: type,
     items: b.items.map(i => ({name: i.name, size: i.size, qty: i.qty, sub: itemSub(i), mods: i.mods || [], note: i.note || '', cancelled: !!i.cancelled})),
     status: 'new',
-    by: CUR.name
-  });
+    by: CUR.name,
+    deviceId: DEVICE_ID
+  });}
   commitKOTState(c);
   clearNewTableOrder(c,key);
   if(!c.items.length && !hasKotSent(c)) emptyCart(key);
@@ -2032,22 +2037,22 @@ function openTable(t){
   curOrder={type:'Dine-in',tableId:t.id,tableNo:t.no,area:t.area};
   loadCartFor(t.id);
   if(cart){
-    // Table lock detection — v12.5 for random dual-phone billing
     try{
       const otherDevice = cart.deviceId && cart.deviceId!==DEVICE_ID;
-      const recent = (Date.now() - (cart.mtime||0)) < 90000; // 90 sec
+      const recent = (Date.now() - (cart.mtime||0)) < 90000;
       if(otherDevice && recent && (cart.items||[]).length){
         const who = cart.deviceName || cart.lastEditedBy || 'other device';
         const age = Math.round((Date.now()-(cart.mtime||0))/1000);
         console.warn('[lock] Table '+t.no+' being edited by '+who+' '+age+'s ago');
-        // Show warning but allow takeover — don't block, just inform
-        setTimeout(()=>{
-          if(confirm('⚠️ Table '+t.no+' was being billed on '+who+' ('+age+'s ago) with '+(cart.items||[]).length+' items.\n\n• OK = Take over & merge (safe)\n• Cancel = Go back')){
-            // continue
-          } else {
-            go('tables'); return;
-          }
-        }, 80);
+        // v13.4: Use proper modal and block enterBilling if user cancels
+        confirmDlg('⚠️ Table '+t.no+' is being billed on <b>'+(who)+'</b> ('+age+'s ago) with '+(cart.items||[]).length+' items.<br><br>Take over & merge (safe) or go back?', function(){
+          let _changed=false;
+          if(cart.tableNo!==t.no){cart.tableNo=t.no;_changed=true;}
+          if(cart.tableArea!==t.area){cart.tableArea=t.area;_changed=true;}
+          if(_changed) save();
+          enterBilling('Table '+t.no+' · '+t.area,'🍽️ Dine-in');
+        }, 'Take Over');
+        return; // block, wait for modal choice
       }
     }catch(e){}
     let _changed=false;
@@ -2806,11 +2811,22 @@ async function settleBill(){
   try{ saveBillToShard(b).then(ok=>{ if(!ok) console.warn('shard save deferred'); }); }catch(e){}
   // v13: auto-archive if needed to keep main doc tiny
   try{ if(DB.bills.length > AUTO_ARCHIVE_KEEP) autoArchiveIfNeeded(); }catch(e){}
+  // v13.4: Prevent double settle race — if table was settled within last 10 sec on any device, abort
+  try{
+    const _ck = curOrder.tableId||cart.key;
+    const existingClose = DB.closedCarts && DB.closedCarts[_ck];
+    if(existingClose && (Date.now() - (existingClose.ts||0)) < 10000){
+      toast('⚠️ Table already settled '+Math.round((Date.now()-existingClose.ts)/1000)+'s ago on '+ (existingClose.deviceName||'other device') + ' — Bill '+existingClose.billNo);
+      toggleCart(false);
+      go('tables');
+      return;
+    }
+  }catch(e){}
   // Record this order as closed so a stale/out-of-order cloud snapshot cannot
   // resurrect it (and its KOT) in the Print Station on this or other devices.
   if(!DB.closedCarts)DB.closedCarts={};
   const _closeKey=curOrder.tableId||cart.key;
-  DB.closedCarts[_closeKey]={ts:Date.now(),billNo:b.no};
+  DB.closedCarts[_closeKey]={ts:Date.now(),billNo:b.no,deviceId:DEVICE_ID,deviceName:getDeviceName()||DEVICE_ID};
   pruneClosedCarts();
   saveCustomerFromBill(b);
   deductStock(b);
@@ -4244,7 +4260,7 @@ function startDevicePresence(){
         rev: _rev||0
       }, {merge:true});
     }catch(e){ /* ignore */ }
-  }, 8000);
+  }, 30000);
   // Run once immediately
   setTimeout(async ()=>{
     try{
@@ -4855,7 +4871,7 @@ function startSync(){
         pullNow({force:true}).catch(()=>{});
       }
     }
-  }, 3000);
+  }, 5000);
   // visibility / online hooks — aggressive resync
   try{
     document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && _syncEnabled){ syncNow(); }});
@@ -4960,7 +4976,7 @@ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded
 /* === end v12.2 === */
 
 async function boot(){
-  console.log("IW v13.3 boot — fixed lollipop infinite add bug");
+  console.log("IW v13.4 boot — all bugs fixed: lollipop loop + lock + double settle + KOT dup + presence 30s");
   // show login instantly – never block UI
   try{ renderLogin(); }catch(e){ console.error(e); }
   // Ensure rev loaded from storage
@@ -5002,7 +5018,7 @@ async function boot(){
 boot();
 </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1186a6ebee9447e',t:'MTc4MjQzNzEwMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a1662858e9793b46',t:'MTc4MzI1MjI4NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a2459dedea35ff66',t:'MTc4NTU5NTQyNA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
 <script>
 // ===== INDUS WOK – QR ORDERS MODULE v2.3 =====
