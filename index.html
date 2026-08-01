@@ -294,7 +294,7 @@
   <div class="login-card">
     <div class="logo">🥢</div>
     <div class="brand">Indus Wok</div>
-    <div class="brand-sub">Restaurant POS · v13.2 58mm + QR for Staff</div>
+    <div class="brand-sub">Restaurant POS · v13.3 58mm Fixed Lollipop</div>
     <div class="user-select" id="userSelect"></div>
     <div class="pin-dots" id="pinDots"></div>
     <div class="keypad" id="keypad"></div>
@@ -1017,7 +1017,7 @@
             <div id="deviceNamePreview" style="font-size:12px;margin-top:6px;color:var(--muted)"></div>
           </div>
           <div class="card" style="margin-top:14px"><h3>☁️ Live Multi-Device Sync (Firebase)</h3>
-            <p class="muted" style="font-size:12px;margin-top:0">58MM v13.2 — QR for Waiter/Cashier + Print Station Fixed: Both phones can bill randomly — carts merge smartly, bill numbers are now globally unique, table locks warn if same table opened on both. Secondary phones pull latest first — no more overwrites. Set a Device Name above for each phone. Enter your Firebase project config to sync data across ALL devices in real time. Get this from Firebase Console → Project Settings → General → Your apps → Web app.</p>
+            <p class="muted" style="font-size:12px;margin-top:0">58MM v13.3 — Fixed Lollipop Infinite Add + QR Staff: Both phones can bill randomly — carts merge smartly, bill numbers are now globally unique, table locks warn if same table opened on both. Secondary phones pull latest first — no more overwrites. Set a Device Name above for each phone. Enter your Firebase project config to sync data across ALL devices in real time. Get this from Firebase Console → Project Settings → General → Your apps → Web app.</p>
             <div class="field"><input id="setFirebaseApiKey" placeholder="Firebase API Key (e.g. AIza...)" style="margin-bottom:6px"></div>
             <div class="field"><input id="setFirebaseProjectId" placeholder="Firebase Project ID (e.g. my-pos-1234)" style="margin-bottom:6px"></div>
             <div class="field"><input id="setFirebaseAppId" placeholder="Firebase App ID (optional, e.g. 1:123456:web:abc...)" style="margin-bottom:6px"></div>
@@ -4470,41 +4470,41 @@ function lineKeyForMerge(i){
   return (i.id||'')+'|'+(i.size||'full')+'|'+(i.mods||[]).join(',')+'|'+(i.note||'').trim();
 }
 function mergeTwoCartsSmart(mine, theirs){
-  // v12.5 smart merge for dual-phone billing — union items, not overwrite
+  // v13.3 FIXED AGAIN: use NEWER qty for same dish, UNION for different dishes
+  // This fixes lollipop infinite add AND allows minus to work correctly
+  // Old v13.2 summed when qty equal → 1→2→4→8 every 8 sec
+  // v13.3a used MAX → minus didn't work (9 vs 10 → max 10 reverts)
+  // New: same dish → take qty from NEWER cart (mtime wins) = minus works, no loop
   if(!mine) return theirs;
   if(!theirs) return mine;
   const mineT = mine.mtime||0, theirsT = theirs.mtime||0;
   const newer = mineT >= theirsT ? mine : theirs;
   const older = newer===mine ? theirs : mine;
-  const timeDiff = Math.abs(mineT - theirsT);
+  // v13.3b: If newer cart is empty (cleared), clear wins — don't resurrect older items
+  if((newer.items||[]).length===0){
+    const mergedEmpty={
+      ...JSON.parse(JSON.stringify(newer)),
+      items:[],
+      mtime:Math.max(mineT, theirsT),
+      deviceId:newer.deviceId||older.deviceId||DEVICE_ID,
+      deviceName:newer.deviceName||older.deviceName||'',
+      lastEditedBy:newer.lastEditedBy||older.lastEditedBy||'',
+      lastEditedAt:Math.max(newer.lastEditedAt||0, older.lastEditedAt||0, mineT, theirsT)
+    };
+    mergedEmpty.kotSent={};
+    mergedEmpty.qrOrderIds=[...new Set([...(mine.qrOrderIds||[]), ...(theirs.qrOrderIds||[])])];
+    return mergedEmpty;
+  }
   const map = {};
-  // start with newer
+  // Start with newer's items (newer wins for same dish)
   (newer.items||[]).forEach(it=>{
     const k=lineKeyForMerge(it);
     map[k]=JSON.parse(JSON.stringify(it));
   });
-  // merge older — union logic
+  // Add older's items only if dish key not already in newer (union of different dishes)
   (older.items||[]).forEach(it=>{
     const k=lineKeyForMerge(it);
-    if(map[k]){
-      // same line exists on both
-      const ex=map[k];
-      if(timeDiff < 8000){
-        // edited within 8 sec on both devices → likely concurrent add → sum quantities but cap to avoid massive double
-        // If qtys are equal, it means both added same qty separately → sum (e.g., 1+1=2)
-        // If qtys differ, take max (one device already had more)
-        if((ex.qty||0)===(it.qty||0)){
-          // both added same qty concurrently — if mtime diff small, assume 2 separate adds, sum
-          // but only sum once, and only if both qtys =1 typical para
-          if(timeDiff < 4000) ex.qty = (ex.qty||0) + (it.qty||0);
-          else ex.qty = Math.max(ex.qty||0, it.qty||0);
-        } else {
-          ex.qty = Math.max(ex.qty||0, it.qty||0);
-        }
-      } else {
-        ex.qty = Math.max(ex.qty||0, it.qty||0);
-      }
-    } else {
+    if(!map[k]){
       map[k]=JSON.parse(JSON.stringify(it));
     }
   });
@@ -4517,13 +4517,11 @@ function mergeTwoCartsSmart(mine, theirs){
     lastEditedBy:newer.lastEditedBy||older.lastEditedBy||'',
     lastEditedAt:Math.max(newer.lastEditedAt||0, older.lastEditedAt||0, mineT, theirsT)
   };
-  // kotSent merge — take max per item
   merged.kotSent = {...(older.kotSent||{}), ...(newer.kotSent||{})};
   Object.keys(older.kotSent||{}).forEach(k=>{
     merged.kotSent[k]=Math.max(+(older.kotSent[k]||0), +(newer.kotSent[k]||0));
   });
   merged.qrOrderIds=[...new Set([...(mine.qrOrderIds||[]), ...(theirs.qrOrderIds||[])])];
-  // meta merge — phone/cust from newer if present else older
   if(!merged.phone) merged.phone=older.phone||'';
   if(!merged.cust) merged.cust=older.cust||'';
   if(!merged.addr) merged.addr=older.addr||'';
@@ -4962,7 +4960,7 @@ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded
 /* === end v12.2 === */
 
 async function boot(){
-  console.log("IW v13.2 boot — 58mm + QR for Waiter/Cashier + PrintStation recent bills");
+  console.log("IW v13.3 boot — fixed lollipop infinite add bug");
   // show login instantly – never block UI
   try{ renderLogin(); }catch(e){ console.error(e); }
   // Ensure rev loaded from storage
